@@ -212,6 +212,7 @@ class savedata:
     reg_mean_counter = 1
     reg_last_val = 0
     reg_last_timestamp = 0
+    reg_calc_version = 0
 
 
 def on_connect(client, userdata, flags, rc):
@@ -959,11 +960,19 @@ if mydata.token == 0:
     )
 
 
-# Discard average polluted by the old first-start bug
-# (interval calculated from timestamp 0 = 1970)
-if mydata.reg_mean_time > 24 * 365:
+# Averages from older versions are unreliable (first interval was
+# calculated from timestamp 0 = 1970, offline gaps were counted as one
+# interval). Reset them once and start a clean calculation.
+REG_CALC_VERSION = 2
+
+if getattr(mydata, "reg_calc_version", 0) < REG_CALC_VERSION:
+    print(
+        "Resetting average regeneration interval "
+        "(old value: {}h)".format(mydata.reg_mean_time)
+    )
     mydata.reg_mean_time = 0
     mydata.reg_mean_counter = 1
+    mydata.reg_calc_version = REG_CALC_VERSION
 
 avg_reg_interval.value = mydata.reg_mean_time
 

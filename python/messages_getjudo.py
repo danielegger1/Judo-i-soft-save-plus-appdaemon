@@ -78,8 +78,10 @@ if config_getjudo.LANGUAGE == "DE":
         41: "Tempfile scheinbar korrupt oder nicht vorhanden, Schreibe neu",
         42: "Beende Script. Schwerwiegender Fehler in Zeile: {}",
         43: "Errechneter Natriumgehalt: {}mg/L < {}mg/L bei {}°dH",
-        44: "Natriumgrenzwert würde überschritten werden. Wunschwasserhärte wird auf {} °dH gesetzt"
-
+        44: "Natriumgrenzwert würde überschritten werden. Wunschwasserhärte wird auf {} °dH gesetzt",
+        45: "Unbekannte Warnung (JUDO Fehlernummer {})",
+        46: "Unbekannter Fehler (JUDO Fehlernummer {})",
+        47: "Unbekannter Fehler Typ '{}' (JUDO Fehlernummer {})"
     }
 
     warnings = {
@@ -216,7 +218,10 @@ else:
         41: "Temp-file seems to be currupt or not existent, writing a new one",
         42: "Canceling Script, Fatal Error on line: {}",
         43: "Calculated sodium content: {}mg/L < {}mg/L at {}°dH",
-        44: "Sodium level would be exceeded. Desired hardness set to {} °dH"
+        44: "Sodium level would be exceeded. Desired hardness set to {} °dH",
+        45: "Unknown warning (JUDO error code {})",
+        46: "Unknown error (JUDO error code {})",
+        47: "Unknown error type '{}' (JUDO error code {})"
     }
 
 
@@ -278,8 +283,3 @@ else:
         "13": "Double fault: Lsu is not detected and Lso always wet",
         "14": "RS 485 connection problem"
     }
-
-
-
-
-

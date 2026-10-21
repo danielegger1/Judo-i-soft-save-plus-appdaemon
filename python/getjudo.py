@@ -959,6 +959,12 @@ if mydata.token == 0:
     )
 
 
+# Discard average polluted by the old first-start bug
+# (interval calculated from timestamp 0 = 1970)
+if mydata.reg_mean_time > 24 * 365:
+    mydata.reg_mean_time = 0
+    mydata.reg_mean_counter = 1
+
 avg_reg_interval.value = mydata.reg_mean_time
 
 
@@ -1209,45 +1215,41 @@ def main():
             # Hours since last regeneration /
             # Average regeneration interval
 
-            if regenerations.value > mydata.reg_last_val:
+            now = int(time.time())
+            reg_diff = regenerations.value - mydata.reg_last_val
 
-                if (
-                    regenerations.value
-                    - mydata.reg_last_val
-                ) == 1:
+            if regenerations.value > 0 and reg_diff == 1 \
+                    and mydata.reg_last_timestamp != 0:
 
-                    h_since_last_reg.value = int(
-                        (
-                            int(time.time())
-                            - mydata.reg_last_timestamp
-                        ) / 3600
+                # Exactly one new regeneration and the time of the
+                # previous one is known -> valid interval
+                interval_h = (
+                    now - mydata.reg_last_timestamp
+                ) / 3600
+
+                mydata.reg_mean_time = round(
+                    (
+                        (mydata.reg_mean_counter - 1)
+                        * mydata.reg_mean_time
+                        + interval_h
                     )
+                    / mydata.reg_mean_counter,
+                    1
+                )
 
-                    avg_reg_interval.value = int(
-                        (
-                            (
-                                mydata.reg_mean_counter - 1
-                            )
-                            * mydata.reg_mean_time
-                            + h_since_last_reg.value
-                        )
-                        / mydata.reg_mean_counter
-                    )
+                mydata.reg_mean_counter += 1
+                mydata.reg_last_timestamp = now
+                mydata.reg_last_val = regenerations.value
 
-                    mydata.reg_mean_time = (
-                        avg_reg_interval.value
-                    )
+            elif regenerations.value > 0 and reg_diff != 0:
 
-                    mydata.reg_mean_counter += 1
+                # First start, missed regenerations (bridge offline)
+                # or counter reset: no valid interval, only
+                # resynchronise counter and start time
+                mydata.reg_last_timestamp = now
+                mydata.reg_last_val = regenerations.value
 
-                    mydata.reg_last_timestamp = int(
-                        time.time()
-                    )
-
-                    mydata.reg_last_val = regenerations.value
-
-                else:
-                    mydata.reg_last_val = regenerations.value
+            avg_reg_interval.value = mydata.reg_mean_time
 
             if mydata.reg_last_timestamp != 0:
 

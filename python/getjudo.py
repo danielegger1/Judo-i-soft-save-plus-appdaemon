@@ -164,6 +164,7 @@ class notification_entity():
             "payload_available": config_getjudo.AVAILABILITY_ONLINE,
             "payload_not_available": config_getjudo.AVAILABILITY_OFFLINE,
             "state_topic": notification_topic,
+            "json_attributes_topic": notification_attr_topic,
             "name": client_id + " " + self.name,
             "unique_id": client_id + "_" + self.name,
             "icon": self.icon
@@ -177,16 +178,60 @@ class notification_entity():
 
         publish_json(client, autoconf_topic, entity_config)
 
-    def publish(self, message, debuglevel):
-        self.value = message
-        msg = str(self.value)
+    # Home Assistant rejects sensor states longer than 255 characters
+    # (the sensor then shows "unknown"), so the state gets a short text
+    # and the full message goes into the "details" attribute.
+    MAX_STATE_LEN = 255
 
-        print(msg)
+    @staticmethod
+    def _redact(text):
+        token = str(getattr(mydata, "token", "") or "")
+        if len(token) >= 8:
+            text = text.replace(token, "***")
+        return text
+
+    def publish(self, message, debuglevel):
+        if isinstance(message, (list, tuple)):
+            short_parts = []
+            full_parts = []
+            for part in message:
+                if isinstance(part, BaseException):
+                    short_parts.append(type(part).__name__)
+                    full_parts.append(
+                        f"{type(part).__name__}: {part}"
+                    )
+                else:
+                    short_parts.append(str(part))
+                    full_parts.append(str(part))
+            short_msg = " - ".join(short_parts)
+            full_msg = " - ".join(full_parts)
+        else:
+            short_msg = full_msg = str(message)
+
+        short_msg = self._redact(short_msg)
+        full_msg = self._redact(full_msg)
+
+        if len(short_msg) > self.MAX_STATE_LEN:
+            short_msg = short_msg[:self.MAX_STATE_LEN - 3] + "..."
+
+        self.value = short_msg
+
+        print(full_msg)
 
         if config_getjudo.MQTT_DEBUG_LEVEL >= debuglevel:
+            publish_json(
+                client,
+                notification_attr_topic,
+                {
+                    "details": full_msg,
+                    "timestamp": datetime.now().isoformat(
+                        timespec="seconds"
+                    )
+                }
+            )
             client.publish(
                 notification_topic,
-                msg,
+                short_msg,
                 qos=0,
                 retain=True
             )
@@ -617,6 +662,8 @@ availability_topic = (
 notification_topic = (
     f"{config_getjudo.LOCATION}/{config_getjudo.NAME}/notify"
 )
+
+notification_attr_topic = notification_topic + "/attributes"
 
 client_id = (
     f"{config_getjudo.NAME}-{config_getjudo.LOCATION}"

@@ -31,7 +31,17 @@ if config_getjudo.LANGUAGE == "DE":
         19 : "max_Entnahmemenge",
         20 : "Urlaubsmodus",
         21 : "Stunden_seit_letzter_Regeneration",
-        22 : "durchschn_Regenerationsintervall"
+        22 : "durchschn_Regenerationsintervall",
+        23 : "Cloud_Verbindung"
+    }
+
+    connection = {
+        "ok": "Verbunden",
+        "ConnectTimeout": "Zeitüberschreitung beim Verbindungsaufbau",
+        "ReadTimeout": "Zeitüberschreitung beim Warten auf Antwort",
+        "HTTPError": "Serverfehler HTTP",
+        "InvalidResponse": "Ungültige Antwort vom Server",
+        "ConnectionError": "Server nicht erreichbar"
     }
 
     debug = {
@@ -81,7 +91,9 @@ if config_getjudo.LANGUAGE == "DE":
         44: "Natriumgrenzwert würde überschritten werden. Wunschwasserhärte wird auf {} °dH gesetzt",
         45: "Unbekannte Warnung (JUDO Fehlernummer {})",
         46: "Unbekannter Fehler (JUDO Fehlernummer {})",
-        47: "Unbekannter Fehler Typ '{}' (JUDO Fehlernummer {})"
+        47: "Unbekannter Fehler Typ '{}' (JUDO Fehlernummer {})",
+        48: "Keine Verbindung zu myjudo.eu: {}",
+        49: "Verbindung zu myjudo.eu wiederhergestellt (Ausfall {} min)"
     }
 
     warnings = {
@@ -172,7 +184,17 @@ else:
         19: "max_consumption",
         20: "Holiday_mode",
         21 : "Hours_since_last_regeneration",
-        22 : "Avg_regeneration_interval"
+        22 : "Avg_regeneration_interval",
+        23 : "Cloud_connection"
+    }
+
+    connection = {
+        "ok": "Connected",
+        "ConnectTimeout": "Connection timeout",
+        "ReadTimeout": "Read timeout",
+        "HTTPError": "Server error HTTP",
+        "InvalidResponse": "Invalid response from server",
+        "ConnectionError": "Server not reachable"
     }
 
     debug = {
@@ -222,7 +244,9 @@ else:
         44: "Sodium level would be exceeded. Desired hardness set to {} °dH",
         45: "Unknown warning (JUDO error code {})",
         46: "Unknown error (JUDO error code {})",
-        47: "Unknown error type '{}' (JUDO error code {})"
+        47: "Unknown error type '{}' (JUDO error code {})",
+        48: "No connection to myjudo.eu: {}",
+        49: "Connection to myjudo.eu restored (outage {} min)"
     }
 
 

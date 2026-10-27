@@ -91,7 +91,8 @@ class entity():
             entity_config["state_off"] = 0
 
         elif self.entity_type == "sensor":
-            entity_config["unit_of_measurement"] = self.unit
+            if self.unit:
+                entity_config["unit_of_measurement"] = self.unit
 
         elif self.entity_type == "select":
             entity_config["command_topic"] = command_topic
@@ -241,6 +242,106 @@ class Function_Caller(Timer):
     def run(self):
         while not self.finished.wait(self.interval):
             self.function()
+
+
+# Network / server problems with myjudo.eu are not script errors.
+# They are tracked as one general connection state: one notification
+# when the connection is lost, one when it is back.
+CONNECTION_ERRORS = (
+    requests.exceptions.RequestException,
+    urllib3.exceptions.HTTPError,
+    json.JSONDecodeError,
+    TimeoutError,
+    ConnectionError,
+)
+
+
+class cloud_connection():
+    def __init__(self):
+        self.online = True
+        self.lost_since = 0
+        self.data_received = False
+        # Inside a polling cycle the result is collected and only
+        # evaluated once at the end, so a cycle with partial success
+        # does not toggle between "lost" and "restored".
+        self.in_cycle = False
+        self.cycle_error = None
+        self.cycle_ok = False
+
+    def begin_cycle(self):
+        self.in_cycle = True
+        self.cycle_error = None
+        self.cycle_ok = False
+
+    def end_cycle(self):
+        self.in_cycle = False
+        if self.cycle_error is not None:
+            self._set_failed(self.cycle_error)
+        elif self.cycle_ok:
+            self._set_ok()
+
+    @staticmethod
+    def reason_key(e):
+        if isinstance(e, urllib3.exceptions.MaxRetryError) \
+                and e.reason is not None:
+            e = e.reason
+        if isinstance(e, (
+            requests.exceptions.ConnectTimeout,
+            urllib3.exceptions.ConnectTimeoutError
+        )):
+            return "ConnectTimeout"
+        if isinstance(e, (
+            requests.exceptions.ReadTimeout,
+            urllib3.exceptions.ReadTimeoutError,
+            TimeoutError
+        )):
+            return "ReadTimeout"
+        if isinstance(e, requests.exceptions.HTTPError):
+            return "HTTPError"
+        if isinstance(e, json.JSONDecodeError):
+            return "InvalidResponse"
+        return "ConnectionError"
+
+    def failed(self, e):
+        if self.in_cycle:
+            if self.cycle_error is None:
+                self.cycle_error = e
+        else:
+            self._set_failed(e)
+
+    def success(self):
+        if self.in_cycle:
+            self.cycle_ok = True
+        else:
+            self._set_ok()
+
+    def _set_failed(self, e):
+        key = self.reason_key(e)
+        text = messages_getjudo.connection[key]
+        if key == "HTTPError":
+            code = getattr(getattr(e, "response", None),
+                           "status_code", "")
+            text = f"{text} {code}".strip()
+
+        cloud_status.value = text
+
+        if self.online:
+            self.online = False
+            self.lost_since = time.time()
+            notify.publish(
+                messages_getjudo.debug[48].format(text), 1
+            )
+        else:
+            print(messages_getjudo.debug[48].format(text))
+
+    def _set_ok(self):
+        cloud_status.value = messages_getjudo.connection["ok"]
+        if not self.online:
+            self.online = True
+            minutes = int((time.time() - self.lost_since) / 60)
+            notify.publish(
+                messages_getjudo.debug[49].format(minutes), 1
+            )
 
 
 @dataclass
@@ -550,10 +651,16 @@ def send_command(index, data):
             cmd_response.data
         )
 
+        connection.success()
+
         if "status" in cmd_response_json:
 
             if cmd_response_json["status"] == "ok":
                 return True
+
+    except CONNECTION_ERRORS as e:
+        connection.failed(e)
+        return False
 
     except Exception as e:
         notify.publish(
@@ -613,6 +720,8 @@ def judo_login(username, password):
             login_response.data
         )
 
+        connection.success()
+
         if "token" in login_response_json:
 
             print(
@@ -630,6 +739,10 @@ def judo_login(username, password):
             )
 
             sys.exit()
+
+    except CONNECTION_ERRORS as e:
+        connection.failed(e)
+        return 0
 
     except Exception as e:
         notify.publish(
@@ -835,6 +948,16 @@ water_yesterday = entity(
     "L"
 )
 
+cloud_status = entity(
+    messages_getjudo.entities[23],
+    "mdi:cloud-check-outline",
+    "sensor",
+    "",
+    value=messages_getjudo.connection["ok"]
+)
+
+connection = cloud_connection()
+
 notify = notification_entity(
     messages_getjudo.entities[16],
     "mdi:alert-outline"
@@ -1026,6 +1149,25 @@ avg_reg_interval.value = mydata.reg_mean_time
 
 # ----- Mainthread -----
 
+class SkipCycle(Exception):
+    """No connection to myjudo.eu in this cycle."""
+
+
+def publish_state():
+    # Only publish once real values were read, otherwise the
+    # total_increasing sensors would drop to 0
+    if not connection.data_received:
+        return
+
+    outp_val_dict = {}
+
+    for obj in gc.get_objects():
+        if isinstance(obj, entity):
+            outp_val_dict[obj.name] = str(obj.value)
+
+    publish_json(client, state_topic, outp_val_dict)
+
+
 def main():
 
     headers = {
@@ -1037,7 +1179,21 @@ def main():
         )
     }
 
+    cloud_ok = True
+
+    connection.begin_cycle()
+
+    if mydata.token == 0:
+        mydata.token = judo_login(
+            config_getjudo.JUDO_USER,
+            config_getjudo.JUDO_PASSWORD
+        )
+        cloud_ok = mydata.token != 0
+
     try:
+
+        if not cloud_ok:
+            raise SkipCycle()
 
         response = requests.get(
             f"https://www.myjudo.eu/interface/"
@@ -1051,6 +1207,8 @@ def main():
         response.raise_for_status()
 
         response_json = response.json()
+
+        connection.success()
 
         if response_json["status"] == "ok":
 
@@ -1316,20 +1474,7 @@ def main():
                     ) / 3600
                 )
 
-            outp_val_dict = {}
-
-            for obj in gc.get_objects():
-
-                if isinstance(obj, entity):
-                    outp_val_dict[obj.name] = str(
-                        obj.value
-                    )
-
-            publish_json(
-                client,
-                state_topic,
-                outp_val_dict
-            )
+            connection.data_received = True
 
         elif response_json["status"] == "error":
 
@@ -1346,6 +1491,7 @@ def main():
                     config_getjudo.JUDO_USER,
                     config_getjudo.JUDO_PASSWORD
                 )
+                cloud_ok = False
 
             else:
 
@@ -1362,6 +1508,13 @@ def main():
 
             print(messages_getjudo.debug[25])
             notify.counter += 1
+
+    except SkipCycle:
+        pass
+
+    except CONNECTION_ERRORS as e:
+        connection.failed(e)
+        cloud_ok = False
 
     except Exception as e:
 
@@ -1384,6 +1537,9 @@ def main():
 
     try:
 
+        if not cloud_ok:
+            raise SkipCycle()
+
         headers = {
             "Connection": "keep-alive",
             "User-Agent": (
@@ -1405,6 +1561,8 @@ def main():
         error_response.raise_for_status()
 
         error_response_json = error_response.json()
+
+        connection.success()
 
         # Initialize variables so they are always defined
         timestamp = ""
@@ -1517,6 +1675,12 @@ def main():
                         1
                     )
 
+    except SkipCycle:
+        pass
+
+    except CONNECTION_ERRORS as e:
+        connection.failed(e)
+
     except Exception as e:
 
         notify.publish(
@@ -1530,6 +1694,12 @@ def main():
         )
 
         notify.counter += 1
+
+    connection.end_cycle()
+
+    # On connection problems the last values are kept and only the
+    # connection status changes
+    publish_state()
 
     # ---------------------------------------------------------
     # Gespeicherte Variablen sichern

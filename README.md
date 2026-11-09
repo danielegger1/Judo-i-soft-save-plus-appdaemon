@@ -1,169 +1,96 @@
-# Judo i-soft save+ to mqtt bridge for homeassistant
+# JUDO i-soft SAFE+ integration for Home Assistant
 <img align="right" height="400" src="isoftsaveplus.jpg">
-This is a small workarount to read and control the Judo isoft safe+ water softener with homeassisant (hassio). It is the version with the small character-lcd and leakage protection.
+Home Assistant custom integration to read and control the JUDO i-soft SAFE+ water softener via the myjudo.eu cloud. It is the version with the small character-lcd and leakage protection.
 
 Unfortunately it is not possible to communicate directly with this version of the plant. Port 8000 and port 8124, through which the system can be read out on the Judo isoft-plus, are closed. The only way to access settings and data is via the cloud server.
-To do this, you must register the system for the cloud service as described in the user manual and create a user account. There is also a judo smartphone app for this, but it is of course nicer to have everything in homeassisant :-)
+To do this, you must register the system for the cloud service as described in the user manual and create a user account. There is also a judo smartphone app for this, but it is of course nicer to have everything in Home Assistant :-)
 
 Notice:
 There are 2 versions of the system, which sound very similar.
 - i-soft safe+ (small display, leakage protection) --->This repo
 - i-soft plus (large graphic display) ---> another tutorials, like this: https://blog.muwave.de/2017/06/monitoring-and-controlling-a-judo-i-soft-plus-water-softening-device-via-lan/
 
-## Config:
-General settings must be made in the config file. 
- - First there are the access data to the myjudo.eu server.
- - Furthermore there are the MQTT broker settings. The IP of the MQTT broker must be specified here, as well as the access data to the broker.
-- General settings like location and name should also be defined. This results in the MQTT topic
-- In addition, the language can be set between German and English, as well as the MQTT debug level. As default user the value "1" or "2" is recommended.
-- At last you have to set in the script in which environment it should run, see following instructions, there are two ways to run this script:
+## Installation (Home Assistant integration)
 
-### Running on a generic Linux platform:
-The requirement is of course that a Python environment is installed on the Linux:
-```
-$ sudo apt update && upgrade
-$ sudo apt install python3-pip
- ```
+Since version 3.0 this repository is a native Home Assistant integration.
+AppDaemon, MQTT and the standalone Python script are **no longer required**.
 
-It may still be necessary to install the paho-mqtt package:
-```
-$sudo pip install paho-mqtt
-```
+### HACS (recommended)
+1. HACS → three-dot menu → *Custom repositories* → add this repository URL, category *Integration*.
+2. Install **JUDO i-soft SAFE+** and restart Home Assistant.
 
-Copy/Clone the repo to your home-folder or wherever you want. Rename the config_getjudo_default.py 
-```
-mv config_getjudo_default.py config_getjudo.py
-```
+### Manual
+Copy the folder `custom_components/judo_isoft_save_plus` into the `custom_components`
+folder of your Home Assistant configuration (`/config/custom_components/…`) and restart
+Home Assistant.
 
-Do the settings in config_getjudo.py , see @ Chapter "Config"
-After that you can start the script. On Linux platforms it is best to include it in the systemd-manager.
-To do this, create a new systemd-service:
-```
-$sudo nano /etc/systemd/system/getjudo.service
-```
-```
-[Unit]
-Description=getjudo service
-After=multi-user.target
-[Service]
-Type=simple
-Restart=always
-ExecStart=/usr/bin/python3 /home/<username>/getjudo.py
-[Install]
-WantedBy=multi-user.target
-```
-User rights may still need to be assigned:
-```
-sudo chmod +x /etc/systemd/system/getjudo.service && chmod +x ~/*getjudo.py
-```
-Reload the daemon:
-```
-$sudo systemctl daemon-reload
-```
-Enable the autostart, if our platform restarts e.g.:
-```
-$sudo systemctl enable getjudo.service
-```
-Start the service:
-```
-$sudo systemctl start getjudo.service
-```
+### Setup
+*Settings → Devices & services → Add integration → JUDO i-soft SAFE+*, then enter the
+credentials of your myjudo.eu account. The device must be registered for the JUDO cloud
+service (see user manual).
 
+Options (*Configure* on the integration):
 
-### Running in AppDeamon docker directly in HomeAssistant (experimental; work in progress)
-0. MQTT should be already setup and running
-1. Install AppDaemon and Studio Code Server (Optional) through HomeAssistant Add-Ons store (https://community.home-assistant.io/t/home-assistant-community-add-on-appdaemon-4/163259)
-2. Configure AppDaemon with the following settings:
-```
-init_commands: []
-python_packages:
-  - paho-mqtt
-system_packages:
-```
+| Option | Default | Description |
+|---|---|---|
+| Polling interval | 30 s | How often myjudo.eu is polled |
+| Notifications | on | Show new warnings/errors as persistent notification |
+| Sodium check | off | Limit output hardness so the sodium limit is kept (8.2 mg/L per °dH) |
+| Sodium raw water / limit | 10 / 200 mg/L | Values for the sodium check |
+| Slider limits | 60 min / 3000 L/h / 500 L | Max. values of the leakage protection sliders |
 
-3. Copy all files from the python folder into the folder appdaemon/apps/main (incl. temp_getjudo.py) -> Studio Code Server . Rename config_getjudo_default.py to config_getjudo.py 
-4. Modify the apps.yaml file:
+## Entities
 
-```
-main_app:
-  module: main_entity
-  class: main_loop
-```
+- Sensors: total water / soft water / hard water (m³, usable in the energy dashboard),
+  consumption today / yesterday, water flow, salt range, raw water hardness,
+  next maintenance, battery, number of regenerations, time since last regeneration,
+  average regeneration interval, message (newest warning/error)
+- Binary sensors: regeneration running, cloud connection
+- Numbers: output hardness, salt stock, sleep mode (hours, 0 = off),
+  max. extraction time, max. water flow, max. extraction quantity
+- Switch: water lock (on = water supply closed)
+- Select: holiday mode
+- Button: start regeneration
 
-5. Modify config_judo.py to your system
-6. Start AppDaemon and check the logs for potential errors
-7. You can easily add more scripts into main_entity.py -> main file, where all scripts are called
+Diagnostics (raw registers, credentials redacted) can be downloaded from the device page.
 
--> the getjudo.py can be also started from a local Win10 VSCode installation, for easier tests of the config (after adding python through extensions and paho-mqtt with pip install)
+### Warnings and errors (replaces the MQTT `notify` topic)
 
+Every new entry of the device fault memory fires the event `judo_isoft_save_plus_message`
+with `message`, `type` (`w` = warning, `e` = error), `code`, `timestamp` and `id`:
 
-### Startup
-Afterwards the device should set itself up automatically with mqtt-autoconfig in homeassitant with all entities:
-
-![HASSIO autoconfig of this device](hassio_device_autconfig2.png)
-
-- reading (sensors): 
-  - next revision
-  - total water consumption
-  - total softwater consumption
-  - total hardwater consumption
-  - salt range
-  - output hardness
-  - input hardness
-  - water flow
-  - capacity of battery
-  - number of regenerations
-  - daily consumption (today)
-  - daily consumption (yesterday)
-- writing:
-  - leakage protection (switch)
-  - output hardness (input number slider)
-  - salt stock (input number slider)
-  - triggering regeneration (switch)
-  - sleepmode (input number slider) (start sleepmode by setting hours) 
-  - max. extraction time, leakage protection config (input number slider)
-  - max. extraction quantity, leakage protection config (input number slider)
-  - max. waterflow, leakage protection config (input number slider)
-  - holidaymode
-- other:
-  - Error- and warning messages of plant published to notification topic (LOCATION/NAME/notify). Can be used for hassio telegram bot:
-
-
-```
-alias: Notify Judo Isoft save plus
-description: "This is an example template, how to configure the notification as automation for Telegram-Bot"
-trigger:
-  - platform: mqtt
-    topic: Keller/Judo_isoftsaveplus/notify
-condition: []
-action:
-  - service: notify.ha_message
+```yaml
+alias: JUDO message to Telegram
+triggers:
+  - trigger: event
+    event_type: judo_isoft_save_plus_message
+actions:
+  - action: notify.ha_message
     data:
-      message: >-
-        Judo I-soft SAVE+:
-        {{states("sensor.judo_isoftsaveplus_keller_meldung")}}
-mode: single
+      message: "JUDO i-soft SAFE+: {{ trigger.event.data.message }}"
+mode: queued
 ```
 
+## Migration from the AppDaemon / MQTT version
 
-### Water consumption statistics after MQTT reconnects
+1. Stop the old bridge (remove the app from AppDaemon `apps.yaml` or
+   `sudo systemctl disable --now getjudo.service`).
+2. Delete the old MQTT device in Home Assistant (*Settings → Devices → MQTT →
+   Judo_isoftsaveplus → Delete*). The retained discovery topics
+   `homeassistant/+/<LOCATION>/<NAME>_*/config` can be removed with MQTT Explorer.
+3. Install and set up this integration.
+4. To keep the long-term statistics of the water meters, rename the new entity IDs to
+   the old ones (entity settings → *Entity ID*), e.g.
+   `sensor.judo_isoftsaveplus_keller_gesamtwasserverbrauch`.
+5. Adjust automations: the regeneration switch is now a button, the notify topic is now
+   an event (see above).
 
-The total water, total softwater and total hardwater sensors use the Home Assistant
-state class `total_increasing`. This metadata is sent in the retained MQTT discovery
-configuration, not in the periodically published state values.
+The values of "consumption today/yesterday" and the regeneration statistics start
+fresh; they are stored in Home Assistant (`.storage/judo_isoft_save_plus.*`).
 
-Older versions changed the internal sensor type when first publishing discovery.
-After an MQTT reconnect, discovery was therefore overwritten without the state class
-and Home Assistant could no longer generate long-term statistics for these sensors.
-Discovery now preserves the sensor type and sends the same metadata on every connection.
-
-After installing the updated [python/getjudo.py](python/getjudo.py), restart the bridge
-once (`sudo systemctl restart getjudo.service` for the example service above, or restart
-AppDaemon). This replaces the retained discovery configuration while preserving the
-existing entity IDs. Do not delete the existing long-term statistics to resolve this issue.
-
-###  !!!!Attention!!!! 
-**Don't post/mail or publish your generated Token anywhere. It allows grand access to the plant!**
+### Attention
+**Don't post or publish your myjudo.eu credentials or token anywhere. They allow full access to the plant!**
+The integration does not log the token, and diagnostics downloads redact the credentials.
 
 
 ### This Project based of informations from:

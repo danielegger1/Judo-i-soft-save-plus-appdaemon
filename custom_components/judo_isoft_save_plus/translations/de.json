@@ -1,0 +1,148 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "myjudo.eu-Konto",
+        "description": "Zugangsdaten des myjudo.eu-Kontos eingeben. Das Gerät muss für den JUDO-Cloud-Service registriert sein.",
+        "data": {
+          "username": "Benutzername",
+          "password": "Passwort"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Erneut anmelden",
+        "description": "Das Passwort für {username} wurde von myjudo.eu abgelehnt. Bitte das aktuelle Passwort eingeben.",
+        "data": {
+          "password": "Passwort"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Benutzername oder Passwort falsch",
+      "cannot_connect": "Keine Verbindung zu myjudo.eu",
+      "no_devices": "Kein Gerät in diesem Konto gefunden",
+      "unknown": "Unerwartete Antwort von myjudo.eu"
+    },
+    "abort": {
+      "already_configured": "Dieses Konto ist bereits eingerichtet",
+      "reauth_successful": "Erneute Anmeldung erfolgreich"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Optionen",
+        "data": {
+          "scan_interval": "Abfrageintervall",
+          "persistent_notifications": "Warnungen und Fehler als Benachrichtigung anzeigen",
+          "sodium_check": "Wunschwasserhärte über Natriumgehalt begrenzen",
+          "sodium_input": "Natriumgehalt des Rohwassers",
+          "sodium_limit": "Natrium-Grenzwert",
+          "limit_extraction_time": "Maximalwert des Reglers 'max. Entnahmedauer'",
+          "limit_max_waterflow": "Maximalwert des Reglers 'max. Wasserdurchfluss'",
+          "limit_extraction_quantity": "Maximalwert des Reglers 'max. Entnahmemenge'"
+        },
+        "data_description": {
+          "scan_interval": "Wie oft myjudo.eu abgefragt wird. Sehr kurze Intervalle belasten die JUDO-Cloud.",
+          "sodium_check": "Die Enthärtung erhöht den Natriumgehalt um ca. 8,2 mg/L pro °dH. Wenn aktiv, wird eine zu niedrige Wunschwasserhärte so angehoben, dass der Grenzwert eingehalten wird.",
+          "sodium_limit": "Trinkwasserverordnung: 200 mg/L"
+        }
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "regeneration_running": {
+        "name": "Regeneration"
+      },
+      "cloud_connection": {
+        "name": "Cloud-Verbindung"
+      }
+    },
+    "button": {
+      "start_regeneration": {
+        "name": "Regeneration starten"
+      }
+    },
+    "number": {
+      "output_hardness": {
+        "name": "Wunschwasserhärte"
+      },
+      "salt_stock": {
+        "name": "Salzvorrat"
+      },
+      "sleepmode": {
+        "name": "Sleepmode"
+      },
+      "extraction_time": {
+        "name": "Max. Entnahmedauer"
+      },
+      "max_waterflow": {
+        "name": "Max. Wasserdurchfluss"
+      },
+      "extraction_quantity": {
+        "name": "Max. Entnahmemenge"
+      }
+    },
+    "select": {
+      "holiday_mode": {
+        "name": "Urlaubsmodus",
+        "state": {
+          "off": "Aus",
+          "waterlock": "Absperren",
+          "mode_1": "Urlaubsmodus 1",
+          "mode_2": "Urlaubsmodus 2"
+        }
+      }
+    },
+    "sensor": {
+      "total_water": {
+        "name": "Gesamtwasserverbrauch"
+      },
+      "total_softwater": {
+        "name": "Gesamtweichwasseranteil"
+      },
+      "total_hardwater": {
+        "name": "Gesamthartwasseranteil"
+      },
+      "water_today": {
+        "name": "Verbrauch heute"
+      },
+      "water_yesterday": {
+        "name": "Verbrauch gestern"
+      },
+      "water_flow": {
+        "name": "Wasserdurchfluss"
+      },
+      "salt_range": {
+        "name": "Salzreichweite"
+      },
+      "input_hardness": {
+        "name": "Rohwasserhärte"
+      },
+      "next_revision": {
+        "name": "Wartung in"
+      },
+      "battery": {
+        "name": "Batterie"
+      },
+      "regenerations": {
+        "name": "Anzahl Regenerationen"
+      },
+      "hours_since_regeneration": {
+        "name": "Zeit seit letzter Regeneration"
+      },
+      "avg_regeneration_interval": {
+        "name": "Durchschn. Regenerationsintervall"
+      },
+      "last_message": {
+        "name": "Meldung"
+      }
+    },
+    "switch": {
+      "water_lock": {
+        "name": "Wasser absperren"
+      }
+    }
+  }
+}

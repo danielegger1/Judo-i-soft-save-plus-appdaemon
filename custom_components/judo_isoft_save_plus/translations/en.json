@@ -1,0 +1,148 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "myjudo.eu account",
+        "description": "Enter the credentials of your myjudo.eu account. The device must be registered for the JUDO cloud service.",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate",
+        "description": "The password for {username} was rejected by myjudo.eu. Please enter the current password.",
+        "data": {
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid username or password",
+      "cannot_connect": "Cannot connect to myjudo.eu",
+      "no_devices": "No device found in this account",
+      "unknown": "Unexpected response from myjudo.eu"
+    },
+    "abort": {
+      "already_configured": "This account is already configured",
+      "reauth_successful": "Re-authentication was successful"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options",
+        "data": {
+          "scan_interval": "Polling interval",
+          "persistent_notifications": "Show warnings and errors as notification",
+          "sodium_check": "Limit output hardness by sodium content",
+          "sodium_input": "Sodium content of raw water",
+          "sodium_limit": "Sodium limit",
+          "limit_extraction_time": "Max. value for the 'max. extraction time' slider",
+          "limit_max_waterflow": "Max. value for the 'max. water flow' slider",
+          "limit_extraction_quantity": "Max. value for the 'max. extraction quantity' slider"
+        },
+        "data_description": {
+          "scan_interval": "How often myjudo.eu is polled. Very short intervals put load on the JUDO cloud.",
+          "sodium_check": "Softening adds about 8.2 mg/L sodium per °dH. If enabled, a lower output hardness is raised so the limit is kept.",
+          "sodium_limit": "German drinking water regulation: 200 mg/L"
+        }
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "regeneration_running": {
+        "name": "Regeneration"
+      },
+      "cloud_connection": {
+        "name": "Cloud connection"
+      }
+    },
+    "button": {
+      "start_regeneration": {
+        "name": "Start regeneration"
+      }
+    },
+    "number": {
+      "output_hardness": {
+        "name": "Output hardness"
+      },
+      "salt_stock": {
+        "name": "Salt stock"
+      },
+      "sleepmode": {
+        "name": "Sleep mode"
+      },
+      "extraction_time": {
+        "name": "Max. extraction time"
+      },
+      "max_waterflow": {
+        "name": "Max. water flow"
+      },
+      "extraction_quantity": {
+        "name": "Max. extraction quantity"
+      }
+    },
+    "select": {
+      "holiday_mode": {
+        "name": "Holiday mode",
+        "state": {
+          "off": "Off",
+          "waterlock": "Water lock",
+          "mode_1": "Holiday mode 1",
+          "mode_2": "Holiday mode 2"
+        }
+      }
+    },
+    "sensor": {
+      "total_water": {
+        "name": "Total water consumption"
+      },
+      "total_softwater": {
+        "name": "Total soft water"
+      },
+      "total_hardwater": {
+        "name": "Total hard water"
+      },
+      "water_today": {
+        "name": "Consumption today"
+      },
+      "water_yesterday": {
+        "name": "Consumption yesterday"
+      },
+      "water_flow": {
+        "name": "Water flow"
+      },
+      "salt_range": {
+        "name": "Salt range"
+      },
+      "input_hardness": {
+        "name": "Raw water hardness"
+      },
+      "next_revision": {
+        "name": "Next maintenance in"
+      },
+      "battery": {
+        "name": "Battery"
+      },
+      "regenerations": {
+        "name": "Regenerations"
+      },
+      "hours_since_regeneration": {
+        "name": "Time since last regeneration"
+      },
+      "avg_regeneration_interval": {
+        "name": "Average regeneration interval"
+      },
+      "last_message": {
+        "name": "Message"
+      }
+    },
+    "switch": {
+      "water_lock": {
+        "name": "Water lock"
+      }
+    }
+  }
+}

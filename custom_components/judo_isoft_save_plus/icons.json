@@ -1,0 +1,40 @@
+{
+  "entity": {
+    "binary_sensor": {
+      "regeneration_running": { "default": "mdi:water-sync" },
+      "cloud_connection": { "default": "mdi:cloud-check-outline", "state": { "off": "mdi:cloud-off-outline" } }
+    },
+    "button": {
+      "start_regeneration": { "default": "mdi:recycle-variant" }
+    },
+    "number": {
+      "output_hardness": { "default": "mdi:water-minus" },
+      "salt_stock": { "default": "mdi:gradient-vertical" },
+      "sleepmode": { "default": "mdi:pause-octagon" },
+      "extraction_time": { "default": "mdi:clock-alert-outline" },
+      "max_waterflow": { "default": "mdi:waves-arrow-up" },
+      "extraction_quantity": { "default": "mdi:cup-water" }
+    },
+    "select": {
+      "holiday_mode": { "default": "mdi:palm-tree" }
+    },
+    "sensor": {
+      "total_water": { "default": "mdi:water-circle" },
+      "total_softwater": { "default": "mdi:water-outline" },
+      "total_hardwater": { "default": "mdi:water" },
+      "water_today": { "default": "mdi:chart-box" },
+      "water_yesterday": { "default": "mdi:chart-box-outline" },
+      "water_flow": { "default": "mdi:waves-arrow-right" },
+      "salt_range": { "default": "mdi:chevron-triple-right" },
+      "input_hardness": { "default": "mdi:water-plus" },
+      "next_revision": { "default": "mdi:account-wrench" },
+      "regenerations": { "default": "mdi:counter" },
+      "hours_since_regeneration": { "default": "mdi:timer-sand" },
+      "avg_regeneration_interval": { "default": "mdi:timer-sync-outline" },
+      "last_message": { "default": "mdi:alert-outline" }
+    },
+    "switch": {
+      "water_lock": { "default": "mdi:pipe-valve" }
+    }
+  }
+}

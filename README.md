@@ -71,22 +71,30 @@ actions:
 mode: queued
 ```
 
-## Migration from the AppDaemon / MQTT version
+## Migration from the AppDaemon / MQTT version (history is taken over automatically)
 
-1. Stop the old bridge (remove the app from AppDaemon `apps.yaml` or
-   `sudo systemctl disable --now getjudo.service`).
-2. Delete the old MQTT device in Home Assistant (*Settings → Devices → MQTT →
-   Judo_isoftsaveplus → Delete*). The retained discovery topics
-   `homeassistant/+/<LOCATION>/<NAME>_*/config` can be removed with MQTT Explorer.
-3. Install and set up this integration.
-4. To keep the long-term statistics of the water meters, rename the new entity IDs to
-   the old ones (entity settings → *Entity ID*), e.g.
-   `sensor.judo_isoftsaveplus_keller_gesamtwasserverbrauch`.
-5. Adjust automations: the regeneration switch is now a button, the notify topic is now
-   an event (see above).
+1. **Stop the old bridge** (remove/disable the app in AppDaemon or
+   `sudo systemctl disable --now getjudo.service`). Keep the MQTT integration running.
+2. Install this integration and add it (*Add integration → JUDO i-soft SAFE+*).
+3. After the login the integration searches the entity registry for the MQTT entities
+   of the old bridge (DE and ENG names, also renamed entity IDs) and shows a preview:
+   old entity → new entity, last value and whether long-term statistics exist.
+4. Confirm *Take over history and statistics*. The new entities then get **exactly the
+   entity IDs of the old ones**, so history, long-term statistics (energy dashboard,
+   water statistics), dashboards and automations simply continue.
+   The counters "consumption today/yesterday", "time since last regeneration" and
+   "average regeneration interval" continue with the last values of the bridge.
+5. The old MQTT entities and their device are removed, the retained MQTT discovery
+   messages are cleared so they do not come back. Old history stays in the database.
 
-The values of "consumption today/yesterday" and the regeneration statistics start
-fresh; they are stored in Home Assistant (`.storage/judo_isoft_save_plus.*`).
+Not transferable (different entity type): the regeneration *switch* (now a button and
+a binary sensor) and the cloud connection *sensor* (now a binary sensor). Automations
+using them must be adjusted, as well as automations on the old `notify` MQTT topic
+(now an event, see above).
+
+If the old bridge is still sending values, the setup refuses the takeover until it is
+stopped. With several old bridges you choose the one belonging to the device; the
+takeover is only offered for accounts with one device.
 
 ### Attention
 **Don't post or publish your myjudo.eu credentials or token anywhere. They allow full access to the plant!**

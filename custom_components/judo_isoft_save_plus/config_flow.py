@@ -17,10 +17,15 @@ from homeassistant.config_entries import (
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.translation import async_get_translations
 from homeassistant.helpers.selector import (
+    BooleanSelector,
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
+    SelectOptionDict,
+    SelectSelector,
+    SelectSelectorConfig,
     TextSelector,
     TextSelectorConfig,
     TextSelectorType,
@@ -28,7 +33,10 @@ from homeassistant.helpers.selector import (
 
 from .api import JudoApi, JudoAuthError, JudoConnectionError, JudoError
 from .const import (
+    CONF_LEGACY_GROUP,
+    CONF_LEGACY_MIGRATION,
     CONF_LIMIT_EXTRACTION_QUANTITY,
+    CONF_MIGRATE_HISTORY,
     CONF_LIMIT_EXTRACTION_TIME,
     CONF_LIMIT_MAX_WATERFLOW,
     CONF_PERSISTENT_NOTIFICATIONS,
@@ -51,6 +59,7 @@ from .const import (
     MAX_SCAN_INTERVAL,
     MIN_SCAN_INTERVAL,
 )
+from .legacy import LegacyGroup, bridge_still_running, find_legacy_groups
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -73,6 +82,12 @@ class JudoConfigFlow(ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
+    def __init__(self) -> None:
+        self._data: dict[str, Any] = {}
+        self._device_count = 0
+        self._groups: list[LegacyGroup] = []
+        self._group: LegacyGroup | None = None
+
     async def _validate(self, username: str, password: str) -> dict[str, str]:
         api = JudoApi(async_get_clientsession(self.hass), username, password)
         try:
@@ -87,6 +102,7 @@ class JudoConfigFlow(ConfigFlow, domain=DOMAIN):
             return {"base": "unknown"}
         if not devices:
             return {"base": "no_devices"}
+        self._device_count = len(devices)
         return {}
 
     async def async_step_user(
@@ -100,13 +116,20 @@ class JudoConfigFlow(ConfigFlow, domain=DOMAIN):
             self._abort_if_unique_id_configured()
             errors = await self._validate(username, user_input[CONF_PASSWORD])
             if not errors:
-                return self.async_create_entry(
-                    title=f"JUDO i-soft SAFE+ ({username})",
-                    data={
-                        CONF_USERNAME: username,
-                        CONF_PASSWORD: user_input[CONF_PASSWORD],
-                    },
-                )
+                self._data = {
+                    CONF_USERNAME: username,
+                    CONF_PASSWORD: user_input[CONF_PASSWORD],
+                }
+                # History of the old AppDaemon/MQTT bridge can only be
+                # assigned unambiguously with a single device
+                if self._device_count == 1:
+                    self._groups = find_legacy_groups(self.hass)
+                if len(self._groups) == 1:
+                    self._group = self._groups[0]
+                    return await self.async_step_legacy()
+                if len(self._groups) > 1:
+                    return await self.async_step_legacy_pick()
+                return self._create()
         return self.async_show_form(
             step_id="user",
             data_schema=self.add_suggested_values_to_schema(
@@ -114,6 +137,121 @@ class JudoConfigFlow(ConfigFlow, domain=DOMAIN):
             ),
             errors=errors,
         )
+
+    def _create(self, extra: dict[str, Any] | None = None) -> ConfigFlowResult:
+        return self.async_create_entry(
+            title=f"JUDO i-soft SAFE+ ({self._data[CONF_USERNAME]})",
+            data={**self._data, **(extra or {})},
+        )
+
+    async def async_step_legacy_pick(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Several old bridges found: choose the one of this device."""
+        if user_input is not None:
+            if user_input[CONF_LEGACY_GROUP] == "none":
+                return self._create()
+            self._group = next(
+                g for g in self._groups if g.client_id == user_input[CONF_LEGACY_GROUP]
+            )
+            return await self.async_step_legacy()
+        options = [
+            SelectOptionDict(
+                value=g.client_id,
+                label=f"{g.client_id} ({len(g.transferable)})",
+            )
+            for g in self._groups
+        ]
+        options.append(SelectOptionDict(value="none", label="-"))
+        return self.async_show_form(
+            step_id="legacy_pick",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_LEGACY_GROUP, default=self._groups[0].client_id
+                    ): SelectSelector(SelectSelectorConfig(options=options))
+                }
+            ),
+        )
+
+    async def async_step_legacy(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show the found entities of the old bridge and ask for the takeover."""
+        group = self._group
+        assert group is not None
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            if not user_input[CONF_MIGRATE_HISTORY]:
+                return self._create()
+            if bridge_still_running(self.hass, group):
+                errors["base"] = "bridge_running"
+            else:
+                return self._create(
+                    {
+                        CONF_LEGACY_MIGRATION: {
+                            "entities": group.migration(),
+                            "remove": [
+                                e.entity_id for e in group.entities if not e.transferable
+                            ],
+                            "device_id": group.device_id,
+                        }
+                    }
+                )
+
+        return self.async_show_form(
+            step_id="legacy",
+            data_schema=vol.Schema(
+                {vol.Required(CONF_MIGRATE_HISTORY, default=True): BooleanSelector()}
+            ),
+            description_placeholders=await self._legacy_placeholders(group),
+            errors=errors,
+        )
+
+    async def _legacy_placeholders(self, group: LegacyGroup) -> dict[str, str]:
+        """Markdown table old entity -> new entity for the preview."""
+        language = self.hass.config.language
+        translations = await async_get_translations(
+            self.hass, language, "entity", {DOMAIN}
+        )
+        with_statistics: set[str] = set()
+        if "recorder" in self.hass.config.components:
+            try:
+                from homeassistant.components.recorder.statistics import (  # noqa: PLC0415
+                    async_list_statistic_ids,
+                )
+
+                ids = {e.entity_id for e in group.transferable}
+                with_statistics = {
+                    s["statistic_id"]
+                    for s in await async_list_statistic_ids(self.hass, ids)
+                }
+            except Exception:  # noqa: BLE001
+                _LOGGER.debug("Could not list statistics", exc_info=True)
+
+        rows = []
+        for ent in group.transferable:
+            assert ent.key is not None
+            domain = ent.entity_id.split(".", 1)[0]
+            name = translations.get(
+                f"component.{DOMAIN}.entity.{domain}.{ent.key}.name", ent.key
+            )
+            state = self.hass.states.get(ent.entity_id)
+            value = "-"
+            if state is not None:
+                unit = state.attributes.get("unit_of_measurement") or ""
+                value = f"{state.state} {unit}".strip()
+            stats = "✔" if ent.entity_id in with_statistics else ""
+            rows.append(f"| `{ent.entity_id}` | {name} | {value} | {stats} |")
+        skipped = ", ".join(
+            f"`{e.entity_id}`" for e in group.entities if not e.transferable
+        )
+        return {
+            "client_id": group.client_id,
+            "count": str(len(rows)),
+            "table": "\n".join(rows),
+            "skipped": skipped or "-",
+        }
 
     async def async_step_reauth(
         self, entry_data: Mapping[str, Any]

@@ -9,5 +9,5 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/danielegger1/judo-i-soft-save-plus-appdaemon/issues",
   "requirements": [],
-  "version": "3.0.0"
+  "version": "3.1.0"
 }

@@ -15,13 +15,28 @@
         "data": {
           "password": "Password"
         }
+      },
+      "legacy_pick": {
+        "title": "Old AppDaemon/MQTT bridge",
+        "description": "Several installations of the old AppDaemon/MQTT bridge were found. Choose the one belonging to this device to take over its history, or \"-\" to skip.",
+        "data": {
+          "legacy_group": "Old bridge"
+        }
+      },
+      "legacy": {
+        "title": "Take over history from AppDaemon",
+        "description": "Entities of the old AppDaemon/MQTT bridge **{client_id}** were found. The following {count} entities can be taken over by this integration. They keep their entity ID, so history, long-term statistics (✔), dashboards and automations continue:\n\n| Old entity (MQTT) | New entity | Last value | Statistics |\n|---|---|---|---|\n{table}\n\nNot transferable (removed, history stays in the database): {skipped}\n\n**Stop the AppDaemon app / getjudo service before you continue.** The old MQTT entities and their device are removed.",
+        "data": {
+          "migrate_history": "Take over history and statistics"
+        }
       }
     },
     "error": {
       "invalid_auth": "Invalid username or password",
       "cannot_connect": "Cannot connect to myjudo.eu",
       "no_devices": "No device found in this account",
-      "unknown": "Unexpected response from myjudo.eu"
+      "unknown": "Unexpected response from myjudo.eu",
+      "bridge_running": "The old bridge is still sending values. Stop the AppDaemon app (or the getjudo service) first, wait until its entities are unavailable and try again."
     },
     "abort": {
       "already_configured": "This account is already configured",

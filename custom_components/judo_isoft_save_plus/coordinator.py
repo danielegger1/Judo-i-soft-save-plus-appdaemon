@@ -127,6 +127,8 @@ class JudoCoordinator(DataUpdateCoordinator[JudoData]):
             hass, STORAGE_VERSION, f"{DOMAIN}.{entry.entry_id}"
         )
         self._stored: dict[str, Any] = {}
+        # last values of the old AppDaemon/MQTT bridge (see legacy.py)
+        self.legacy_seed: dict[str, Any] | None = None
 
     async def async_load_storage(self) -> None:
         """Load persisted counters (replaces temp_getjudo.pkl)."""
@@ -135,6 +137,12 @@ class JudoCoordinator(DataUpdateCoordinator[JudoData]):
 
     def _save(self) -> None:
         self._store.async_delay_save(lambda: self._stored, 10)
+
+    async def async_shutdown(self) -> None:
+        """Write pending counters on unload/reload (delayed save would be lost)."""
+        await super().async_shutdown()
+        if self._stored:
+            await self._store.async_save(self._stored)
 
     async def _async_update_data(self) -> JudoData:
         try:
@@ -189,6 +197,9 @@ class JudoCoordinator(DataUpdateCoordinator[JudoData]):
         if total_l is not None:
             store["last_total_l"] = total_l
         values["total_water"] = None if total_l is None else round(total_l / 1000, 3)
+
+        if self.legacy_seed is not None and total_l is not None:
+            self._apply_seed(store, total_l, values.get("regenerations"), now)
 
         # --- consumption today / yesterday -----------------------------------
         # Uses the full date. The old script compared only the day of the
@@ -247,6 +258,28 @@ class JudoCoordinator(DataUpdateCoordinator[JudoData]):
             if store.get("reg_ts_exact") and store.get("reg_last_ts")
             else None
         )
+
+    def _apply_seed(
+        self, store: dict[str, Any], total_l: int, count: int | None, now: float
+    ) -> None:
+        """Continue the counters of the old bridge instead of starting at 0."""
+        seed, self.legacy_seed = self.legacy_seed or {}, None
+        if "day" in store:
+            return  # this integration already has its own values
+        store["day"] = dt_util.now().date().isoformat()
+        store["offset_total_l"] = max(total_l - seed.get("water_today_l", 0), 0)
+        if "water_yesterday_l" in seed:
+            store["yesterday_l"] = seed["water_yesterday_l"]
+        if seed.get("reg_mean_h"):
+            store["reg_mean_h"] = round(float(seed["reg_mean_h"]), 1)
+            # unknown how many intervals the old average is based on; weigh it
+            # like 10 measured intervals so one new interval does not dominate
+            store["reg_mean_count"] = 10
+        if count and "hours_since_regeneration" in seed:
+            store["reg_last_val"] = count
+            store["reg_last_ts"] = now - float(seed["hours_since_regeneration"]) * 3600
+            store["reg_ts_exact"] = True
+        _LOGGER.debug("Continued counters of the old bridge: %s", seed)
 
     def _process_messages(self, entries: list[dict[str, Any]]) -> dict[str, Any] | None:
         """Report new fault memory entries, return the newest one."""

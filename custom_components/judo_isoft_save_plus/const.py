@@ -76,3 +76,8 @@ MAX_STATE_LEN: Final = 255
 def scan_interval(seconds: int) -> timedelta:
     """Return a clamped polling interval."""
     return timedelta(seconds=max(MIN_SCAN_INTERVAL, min(MAX_SCAN_INTERVAL, int(seconds))))
+
+# Config entry data: pending takeover of the AppDaemon/MQTT bridge history
+CONF_LEGACY_MIGRATION: Final = "legacy_migration"
+CONF_MIGRATE_HISTORY: Final = "migrate_history"
+CONF_LEGACY_GROUP: Final = "legacy_group"

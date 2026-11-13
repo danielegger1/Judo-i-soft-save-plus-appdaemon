@@ -29,7 +29,7 @@ async def async_plan(hass: HomeAssistant, entry: ConfigEntry) -> LegacyPlan:
 async def async_check_issue(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Show a repair if data of the old bridge is left."""
     plan = await async_plan(hass, entry)
-    if plan.merges or plan.remove_entities:
+    if plan.pending:
         ir.async_create_issue(
             hass,
             DOMAIN,

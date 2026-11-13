@@ -76,16 +76,19 @@ mode: queued
 1. **Stop the old bridge** (remove/disable the app in AppDaemon or
    `sudo systemctl disable --now getjudo.service`). Keep the MQTT integration running.
 2. Install this integration and add it (*Add integration → JUDO i-soft SAFE+*).
-3. After the login the integration searches the entity registry for the MQTT entities
-   of the old bridge (DE and ENG names, also renamed entity IDs) and shows a preview:
-   old entity → new entity, last value and whether long-term statistics exist.
-4. Confirm *Take over history and statistics*. The new entities then get **exactly the
-   entity IDs of the old ones**, so history, long-term statistics (energy dashboard,
-   water statistics), dashboards and automations simply continue.
-   The counters "consumption today/yesterday", "time since last regeneration" and
-   "average regeneration interval" continue with the last values of the bridge.
-5. The old MQTT entities and their device are removed, the retained MQTT discovery
-   messages are cleared so they do not come back. Old history stays in the database.
+3. After the login the integration searches the entity registry and the recorder for
+   data of the old bridge (DE and ENG names, renamed entity IDs, and also statistics
+   whose MQTT entities were already deleted) and shows a preview in three parts:
+   1. **taken over** entities: the new entities get exactly these entity IDs,
+   2. **further old statistics** (e.g. older English names) merged into them,
+   3. **costs** of the energy dashboard (with amount) transferred as well.
+4. Confirm. The old values are transferred **first**, only then the integration starts
+   writing its own values. History, long-term statistics, energy dashboard costs,
+   dashboards and automations continue. The counters "consumption today/yesterday",
+   "time since last regeneration" and "average regeneration interval" continue with the
+   last values of the bridge.
+5. Left over MQTT entities and their device are removed, the retained MQTT discovery
+   messages are cleared so they do not come back. Old statistics are kept.
 
 Not transferable (different entity type): the regeneration *switch* (now a button and
 a binary sensor) and the cloud connection *sensor* (now a binary sensor). Automations
@@ -112,9 +115,9 @@ confirmation:
   this integration (only hours before their own data) and the sums are continued, so
   the energy dashboard shows one continuous series,
 - the energy dashboard is switched to the new entities,
-- left over entities of the old bridge (e.g. an old `..._water_lock` switch or
-  unavailable `..._cost` sensors) are removed,
-- optionally the old statistics are deleted afterwards (off by default).
+- left over MQTT entities of the old bridge (e.g. an old `..._water_lock` switch) are removed,
+- old cost sensors and old statistics are **kept**; they are only deleted if you tick
+  the option (after their data was copied).
 
 Create a backup before. Only long-term statistics are merged; the detailed state history
 of the old entity IDs stays under their old IDs.

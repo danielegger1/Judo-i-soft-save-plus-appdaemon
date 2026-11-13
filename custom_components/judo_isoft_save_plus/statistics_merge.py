@@ -55,6 +55,7 @@ class SourceInfo:
     first: datetime | None = None
     last: datetime | None = None
     hours: int = 0  # hours that will be copied
+    amount: float | None = None  # sum of the copied hours (costs: EUR)
 
 
 @dataclass
@@ -65,6 +66,10 @@ class MergePlan:
     sources: list[SourceInfo]
     unit: str | None = None
 
+    @property
+    def is_cost(self) -> bool:
+        return self.target.endswith(COST_SUFFIXES)
+
 
 @dataclass
 class LegacyPlan:
@@ -74,11 +79,23 @@ class LegacyPlan:
     energy: dict[str, str] = field(default_factory=dict)  # old -> new in prefs
     remove_entities: list[str] = field(default_factory=list)
     remove_devices: list[str] = field(default_factory=list)
+    # old "_cost" sensors of the energy dashboard: their data is transferred,
+    # they are only removed together with the old statistics (opt-in)
+    cost_entities: list[str] = field(default_factory=list)
 
     @property
     def empty(self) -> bool:
         return not (
             self.merges or self.energy or self.remove_entities or self.remove_devices
+        )
+
+    @property
+    def pending(self) -> bool:
+        """Something left to do (kept old statistics alone do not count)."""
+        return bool(
+            any(src.hours for m in self.merges for src in m.sources)
+            or self.energy
+            or self.remove_entities
         )
 
     @property
@@ -148,22 +165,21 @@ async def _metadata(
     return {sid: dict(m[1]) for sid, m in meta.items()}
 
 
-async def async_build_plan(hass: HomeAssistant, serial: str) -> LegacyPlan:
-    """Find what can be transferred (read only)."""
-    plan = LegacyPlan()
+async def async_legacy_candidates(
+    hass: HomeAssistant, own: set[str]
+) -> dict[str, list[tuple[str, str, str]]]:
+    """Old statistic ids of the bridge: prefix -> [(statistic_id, key, suffix)].
+
+    Works from the recorder, so it also finds statistics whose MQTT entities
+    were already deleted. Only prefixes with a total water statistic count.
+    """
     if RECORDER not in hass.config.components:
-        return plan
+        return {}
     from homeassistant.components.recorder.statistics import (  # noqa: PLC0415
         async_list_statistic_ids,
     )
 
-    new_ids = _new_entity_ids(hass, serial)
-    if not new_ids:
-        return plan
-    own = set(new_ids.values())
     ent_reg = er.async_get(hass)
-
-    # --- old statistic ids, grouped by bridge prefix ------------------------
     candidates: dict[str, list[tuple[str, str, str]]] = {}
     for info in await async_list_statistic_ids(hass):
         statistic_id = info["statistic_id"]
@@ -179,13 +195,90 @@ async def async_build_plan(hass: HomeAssistant, serial: str) -> LegacyPlan:
         if entry is not None and entry.platform not in (MQTT, ENERGY):
             continue  # belongs to another integration
         candidates.setdefault(prefix, []).append((statistic_id, key, suffix))
-
-    # only prefixes that look like the bridge (total water must be there)
-    prefixes = {
-        prefix
+    return {
+        prefix: sorted(items)
         for prefix, items in candidates.items()
         if any(key == "total_water" for _, key, _ in items)
     }
+
+
+async def async_first_setup_overview(
+    hass: HomeAssistant,
+    items: list[tuple[str, str, str]],
+    takeover: dict[str, str],
+) -> tuple[dict[str, str], list[tuple[str, SourceInfo, str | None]]]:
+    """Preview for the first setup (the new entities do not exist yet).
+
+    Returns the completed takeover (key -> old entity_id) and the other old
+    statistics with their target: (target, source info, unit).
+
+    For values whose MQTT entity is already deleted, the newest old
+    statistic_id takes over (its entity_id is free), so its history,
+    statistics and energy dashboard costs continue unchanged.
+    """
+    ent_reg = er.async_get(hass)
+    ids = {sid for sid, _, _ in items}
+    rows = await _rows(hass, ids | set(takeover.values()))
+    meta = await _metadata(hass, ids | set(takeover.values()))
+
+    takeover = dict(takeover)
+    newest: dict[str, tuple[float, str]] = {}
+    for sid, key, suffix in items:
+        if suffix or key in takeover or ent_reg.async_get(sid) is not None:
+            continue
+        if not (src := rows.get(sid)):
+            continue
+        last = src[-1]["start"]
+        if key not in newest or last > newest[key][0]:
+            newest[key] = (last, sid)
+    for key, (_, sid) in newest.items():
+        takeover[key] = sid
+
+    taken = set(takeover.values())
+    result: list[tuple[str, SourceInfo, str | None]] = []
+    for sid, key, suffix in items:
+        if key not in takeover or sid in taken:
+            continue
+        target = takeover[key] + suffix
+        if target == sid:
+            continue  # cost statistic of a taken over entity: continues as is
+        src = rows.get(sid) or []
+        if not src:
+            continue
+        unit = (meta.get(sid) or {}).get("unit_of_measurement")
+        target_unit = (meta.get(target) or {}).get("unit_of_measurement", unit)
+        if unit != target_unit:
+            continue
+        target_start = _first_start(rows.get(target))
+        copied = [r for r in src if target_start is None or r["start"] < target_start]
+        result.append(
+            (
+                target,
+                SourceInfo(
+                    sid,
+                    dt_util.utc_from_timestamp(src[0]["start"]),
+                    dt_util.utc_from_timestamp(src[-1]["start"]),
+                    len(copied),
+                    _amount(copied),
+                ),
+                unit,
+            )
+        )
+    return takeover, result
+
+
+async def async_build_plan(hass: HomeAssistant, serial: str) -> LegacyPlan:
+    """Find what can be transferred (read only)."""
+    plan = LegacyPlan()
+    if RECORDER not in hass.config.components:
+        return plan
+    new_ids = _new_entity_ids(hass, serial)
+    if not new_ids:
+        return plan
+    own = set(new_ids.values())
+    ent_reg = er.async_get(hass)
+    candidates = await async_legacy_candidates(hass, own)
+    prefixes = set(candidates)
 
     targets: dict[str, list[str]] = {}
     for prefix in prefixes:
@@ -213,16 +306,18 @@ async def async_build_plan(hass: HomeAssistant, serial: str) -> LegacyPlan:
                     continue
                 if not src_rows:
                     continue
+                copied = [
+                    r
+                    for r in src_rows
+                    if target_start is None or r["start"] < target_start
+                ]
                 infos.append(
                     SourceInfo(
                         source,
                         dt_util.utc_from_timestamp(src_rows[0]["start"]),
                         dt_util.utc_from_timestamp(src_rows[-1]["start"]),
-                        sum(
-                            1
-                            for r in src_rows
-                            if target_start is None or r["start"] < target_start
-                        ),
+                        len(copied),
+                        _amount(copied),
                     )
                 )
             if infos:
@@ -258,12 +353,23 @@ async def async_build_plan(hass: HomeAssistant, serial: str) -> LegacyPlan:
             base = entry.entity_id.rsplit("_", 1)[0]
             if source and source[0] in prefixes and base not in own:
                 state = hass.states.get(entry.entity_id)
-                # energy keeps cost entities of configured sources alive;
-                # those switched to the new entity become obsolete as well
                 if base in plan.energy or state is None or state.state == STATE_UNAVAILABLE:
-                    plan.remove_entities.append(entry.entity_id)
+                    plan.cost_entities.append(entry.entity_id)
     plan.remove_entities.sort()
+    plan.cost_entities.sort()
     return plan
+
+
+def _amount(rows: list[dict[str, Any]]) -> float | None:
+    """Total of the copied hours of a sum statistic."""
+    if not rows or rows[-1].get("sum") is None or rows[0].get("sum") is None:
+        return None
+    first = rows[0]
+    if first.get("last_reset") is not None:
+        first_hour = max(min(first.get("state") or 0.0, first["sum"]), 0.0)
+    else:
+        first_hour = 0.0
+    return round(rows[-1]["sum"] - first["sum"] + first_hour, 2)
 
 
 def _first_start(rows: list[dict[str, Any]] | None) -> float | None:
@@ -409,6 +515,13 @@ async def async_execute(
         instance = get_instance(hass)
         instance.async_clear_statistics(plan.old_statistic_ids)
         await instance.async_block_till_done()
+        # the old cost sensors only showed the deleted statistics
+        for entity_id in plan.cost_entities:
+            if ent_reg.async_get(entity_id):
+                ent_reg.async_remove(entity_id)
+                result["removed"] += 1
+            if (state := hass.states.get(entity_id)) and state.attributes.get("restored"):
+                hass.states.async_remove(entity_id)
     return result
 
 
@@ -442,24 +555,36 @@ def _replace_energy(data: dict[str, Any], replace: dict[str, str]) -> dict[str, 
     return update
 
 
-def _fmt(value: datetime | None) -> str:
+def format_date(value: datetime | None) -> str:
     return dt_util.as_local(value).strftime("%d.%m.%Y") if value else "-"
+
+
+def _rows_md(merges: list[MergePlan], with_amount: bool) -> str:
+    rows = []
+    for merge in merges:
+        for i, source in enumerate(merge.sources):
+            row = (
+                f"| `{source.statistic_id}` | "
+                f"{'`' + merge.target + '`' if i == 0 else '〃'} | "
+                f"{format_date(source.first)} – {format_date(source.last)} | {source.hours} |"
+            )
+            if with_amount:
+                amount = "-" if source.amount is None else f"{source.amount:.2f}"
+                row += f" {amount} {merge.unit or ''} |"
+            rows.append(row)
+    return "\n".join(rows)
 
 
 def describe(plan: LegacyPlan) -> dict[str, str]:
     """Markdown for the preview."""
-    rows = []
-    for merge in plan.merges:
-        for i, source in enumerate(merge.sources):
-            rows.append(
-                f"| `{source.statistic_id}` | "
-                f"{'`' + merge.target + '`' if i == 0 else '〃'} | "
-                f"{_fmt(source.first)} – {_fmt(source.last)} | {source.hours} |"
-            )
+    water = [m for m in plan.merges if not m.is_cost]
+    costs = [m for m in plan.merges if m.is_cost]
     energy = "\n".join(f"- `{old}` → `{new}`" for old, new in plan.energy.items())
     remove = ", ".join(f"`{e}`" for e in plan.remove_entities)
     return {
-        "table": "\n".join(rows) or "| - | - | - | - |",
+        "table": _rows_md(water, False) or "| - | - | - | - |",
+        "costs": _rows_md(costs, True) or "| - | - | - | - | - |",
         "energy": energy or "-",
         "remove": remove or "-",
+        "cost_entities": ", ".join(f"`{e}`" for e in plan.cost_entities) or "-",
     }

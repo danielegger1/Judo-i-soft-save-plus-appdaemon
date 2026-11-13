@@ -18,6 +18,7 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.translation import async_get_translations
+from homeassistant.util import slugify
 from homeassistant.helpers.selector import (
     BooleanSelector,
     NumberSelector,
@@ -61,7 +62,14 @@ from .const import (
     MIN_SCAN_INTERVAL,
 )
 from .legacy import LegacyGroup, bridge_still_running, find_legacy_groups
-from .statistics_merge import LegacyPlan, describe as describe_plan
+from .statistics_merge import (
+    COST_SUFFIXES,
+    LegacyPlan,
+    format_date as describe_date,
+    async_first_setup_overview,
+    async_legacy_candidates,
+    describe as describe_plan,
+)
 from .transfer import async_plan as async_transfer_plan, async_run as async_run_transfer
 
 _LOGGER = logging.getLogger(__name__)
@@ -88,8 +96,10 @@ class JudoConfigFlow(ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         self._data: dict[str, Any] = {}
         self._device_count = 0
-        self._groups: list[LegacyGroup] = []
-        self._group: LegacyGroup | None = None
+        # bridge prefix (e.g. "isoftsafeplus_home") -> registry group / statistics
+        self._choices: dict[str, dict[str, Any]] = {}
+        self._prefix: str | None = None
+        self._takeover: dict[str, str] = {}
 
     async def _validate(self, username: str, password: str) -> dict[str, str]:
         api = JudoApi(async_get_clientsession(self.hass), username, password)
@@ -107,6 +117,20 @@ class JudoConfigFlow(ConfigFlow, domain=DOMAIN):
             return {"base": "no_devices"}
         self._device_count = len(devices)
         return {}
+
+    async def _find_legacy(self) -> None:
+        """Entities (registry) and statistics (recorder) of the old bridge."""
+        choices: dict[str, dict[str, Any]] = {}
+        for group in find_legacy_groups(self.hass):
+            choices.setdefault(slugify(group.client_id), {})["group"] = group
+        try:
+            stats = await async_legacy_candidates(self.hass, set())
+        except Exception:  # noqa: BLE001
+            _LOGGER.warning("Could not read statistics of the old bridge", exc_info=True)
+            stats = {}
+        for prefix, items in stats.items():
+            choices.setdefault(prefix, {})["stats"] = items
+        self._choices = choices
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -126,11 +150,11 @@ class JudoConfigFlow(ConfigFlow, domain=DOMAIN):
                 # History of the old AppDaemon/MQTT bridge can only be
                 # assigned unambiguously with a single device
                 if self._device_count == 1:
-                    self._groups = find_legacy_groups(self.hass)
-                if len(self._groups) == 1:
-                    self._group = self._groups[0]
+                    await self._find_legacy()
+                if len(self._choices) == 1:
+                    self._prefix = next(iter(self._choices))
                     return await self.async_step_legacy()
-                if len(self._groups) > 1:
+                if len(self._choices) > 1:
                     return await self.async_step_legacy_pick()
                 return self._create()
         return self.async_show_form(
@@ -147,6 +171,10 @@ class JudoConfigFlow(ConfigFlow, domain=DOMAIN):
             data={**self._data, **(extra or {})},
         )
 
+    def _label(self, prefix: str) -> str:
+        group: LegacyGroup | None = self._choices[prefix].get("group")
+        return group.client_id if group else prefix
+
     async def async_step_legacy_pick(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -154,16 +182,11 @@ class JudoConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             if user_input[CONF_LEGACY_GROUP] == "none":
                 return self._create()
-            self._group = next(
-                g for g in self._groups if g.client_id == user_input[CONF_LEGACY_GROUP]
-            )
+            self._prefix = user_input[CONF_LEGACY_GROUP]
             return await self.async_step_legacy()
         options = [
-            SelectOptionDict(
-                value=g.client_id,
-                label=f"{g.client_id} ({len(g.transferable)})",
-            )
-            for g in self._groups
+            SelectOptionDict(value=prefix, label=self._label(prefix))
+            for prefix in sorted(self._choices)
         ]
         options.append(SelectOptionDict(value="none", label="-"))
         return self.async_show_form(
@@ -171,7 +194,7 @@ class JudoConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema(
                 {
                     vol.Required(
-                        CONF_LEGACY_GROUP, default=self._groups[0].client_id
+                        CONF_LEGACY_GROUP, default=options[0]["value"]
                     ): SelectSelector(SelectSelectorConfig(options=options))
                 }
             ),
@@ -180,79 +203,95 @@ class JudoConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_legacy(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Show the found entities of the old bridge and ask for the takeover."""
-        group = self._group
-        assert group is not None
+        """Preview: old values are transferred first, then the integration starts."""
+        assert self._prefix is not None
+        choice = self._choices[self._prefix]
+        group: LegacyGroup | None = choice.get("group")
         errors: dict[str, str] = {}
         if user_input is not None:
             if not user_input[CONF_MIGRATE_HISTORY]:
                 return self._create()
-            if bridge_still_running(self.hass, group):
+            if group is not None and bridge_still_running(self.hass, group):
                 errors["base"] = "bridge_running"
-            else:
+            elif self._takeover:
                 return self._create(
                     {
                         CONF_LEGACY_MIGRATION: {
-                            "entities": group.migration(),
+                            "entities": self._takeover,
                             "remove": [
-                                e.entity_id for e in group.entities if not e.transferable
+                                e.entity_id
+                                for e in (group.entities if group else [])
+                                if not e.transferable
                             ],
-                            "device_id": group.device_id,
+                            "device_id": group.device_id if group else None,
+                            "merge_statistics": True,
                         }
                     }
                 )
+            else:
+                return self._create()
 
         return self.async_show_form(
             step_id="legacy",
             data_schema=vol.Schema(
                 {vol.Required(CONF_MIGRATE_HISTORY, default=True): BooleanSelector()}
             ),
-            description_placeholders=await self._legacy_placeholders(group),
+            description_placeholders=await self._legacy_placeholders(group, choice),
             errors=errors,
         )
 
-    async def _legacy_placeholders(self, group: LegacyGroup) -> dict[str, str]:
-        """Markdown table old entity -> new entity for the preview."""
-        language = self.hass.config.language
+    async def _legacy_placeholders(
+        self, group: LegacyGroup | None, choice: dict[str, Any]
+    ) -> dict[str, str]:
+        """Markdown tables for the preview."""
         translations = await async_get_translations(
-            self.hass, language, "entity", {DOMAIN}
+            self.hass, self.hass.config.language, "entity", {DOMAIN}
         )
-        with_statistics: set[str] = set()
-        if "recorder" in self.hass.config.components:
+        takeover = group.migration() if group else {}
+        others: list = []
+        if choice.get("stats"):
             try:
-                from homeassistant.components.recorder.statistics import (  # noqa: PLC0415
-                    async_list_statistic_ids,
+                takeover, others = await async_first_setup_overview(
+                    self.hass, choice["stats"], takeover
                 )
-
-                ids = {e.entity_id for e in group.transferable}
-                with_statistics = {
-                    s["statistic_id"]
-                    for s in await async_list_statistic_ids(self.hass, ids)
-                }
             except Exception:  # noqa: BLE001
-                _LOGGER.debug("Could not list statistics", exc_info=True)
+                _LOGGER.warning("Could not read statistics of the old bridge", exc_info=True)
+        self._takeover = takeover
 
+        with_statistics = {sid for sid, _, _ in choice.get("stats") or []}
         rows = []
-        for ent in group.transferable:
-            assert ent.key is not None
-            domain = ent.entity_id.split(".", 1)[0]
-            name = translations.get(
-                f"component.{DOMAIN}.entity.{domain}.{ent.key}.name", ent.key
-            )
-            state = self.hass.states.get(ent.entity_id)
+        for key, entity_id in sorted(takeover.items(), key=lambda kv: kv[1]):
+            domain = entity_id.split(".", 1)[0]
+            name = translations.get(f"component.{DOMAIN}.entity.{domain}.{key}.name", key)
+            state = self.hass.states.get(entity_id)
             value = "-"
             if state is not None:
                 unit = state.attributes.get("unit_of_measurement") or ""
                 value = f"{state.state} {unit}".strip()
-            stats = "✔" if ent.entity_id in with_statistics else ""
-            rows.append(f"| `{ent.entity_id}` | {name} | {value} | {stats} |")
+            stats = "✔" if entity_id in with_statistics else ""
+            rows.append(f"| `{entity_id}` | {name} | {value} | {stats} |")
+
+        def _row(target: str, src: Any, unit: str | None, amount: bool) -> str:
+            row = (
+                f"| `{src.statistic_id}` | `{target}` | "
+                f"{describe_date(src.first)} – {describe_date(src.last)} | {src.hours} |"
+            )
+            if amount:
+                value = "-" if src.amount is None else f"{src.amount:.2f}"
+                row += f" {value} {unit or ''} |"
+            return row
+
+        water = [_row(t, s, u, False) for t, s, u in others if not t.endswith(COST_SUFFIXES)]
+        costs = [_row(t, s, u, True) for t, s, u in others if t.endswith(COST_SUFFIXES)]
         skipped = ", ".join(
-            f"`{e.entity_id}`" for e in group.entities if not e.transferable
+            f"`{e.entity_id}`" for e in (group.entities if group else []) if not e.transferable
         )
         return {
-            "client_id": group.client_id,
+            "client_id": self._label(self._prefix or ""),
             "count": str(len(rows)),
-            "table": "\n".join(rows),
+            "table": "\n".join(rows) or "| - | - | - | - |",
+            "statistics": "\n".join(water) or "| - | - | - | - |",
+            "costs": "\n".join(costs) or "| - | - | - | - | - |",
             "skipped": skipped or "-",
         }
 

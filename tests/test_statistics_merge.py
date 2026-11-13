@@ -112,6 +112,11 @@ async def test_merge_like_user_installation(
     # new integration since hour 7
     _import(hass, new_total, "m³", "volume", [7, 8], [101.0, 101.1], [0.05, 0.15])
     _import(hass, new_cost, "EUR", None, [7, 8], [0.1, 0.3], [0.1, 0.3], 7)
+    # unavailable cost sensor of the energy dashboard left from the bridge
+    ent_reg.async_get_or_create(
+        "sensor", "energy", "old_cost", suggested_object_id=OLD_DE_COST.split(".")[1]
+    )
+    hass.states.async_set(OLD_DE_COST, "unavailable", {"restored": True})
     ent_reg.async_get_or_create(
         "switch", "mqtt", "iSoftSafePlus-Home_Water_lock",
         suggested_object_id="isoftsafeplus_home_water_lock",
@@ -130,10 +135,18 @@ async def test_merge_like_user_installation(
     )
     assert result["type"] is FlowResultType.FORM
     table = result["description_placeholders"]["table"]
-    for old in (OLD_EN, OLD_DE, OLD_DE_COST, OLD_SOFT):
+    for old in (OLD_EN, OLD_DE, OLD_SOFT):
         assert f"`{old}`" in table
-    assert f"`{new_total}`" in table and f"`{new_cost}`" in table
-    assert OLD_SWITCH in result["description_placeholders"]["remove"]
+    assert f"`{new_total}`" in table
+    assert f"`{new_cost}`" in result["description_placeholders"]["costs"]
+    placeholders = result["description_placeholders"]
+    assert OLD_SWITCH in placeholders["remove"]
+    # costs are listed as transferred (with amount), not removed
+    assert f"`{OLD_DE_COST}`" in placeholders["costs"]
+    assert "0.60 EUR" in placeholders["costs"]
+    assert f"`{OLD_DE_COST}`" not in table
+    assert OLD_DE_COST not in placeholders["remove"]
+    assert OLD_DE_COST in placeholders["cost_entities"]
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"], {CONF_DELETE_OLD_STATISTICS: False}
@@ -154,10 +167,18 @@ async def test_merge_like_user_installation(
     ]
     # renamed old soft water statistic is merged as well
     assert await _stats(hass, new_soft) == [(80.0, 0.0), (80.1, 0.1)]
-    # old statistics are kept, left over entity is gone, issue is fixed
+    # old statistics and old cost sensor are kept, left over entity is gone,
+    # issue is fixed
     assert await _stats(hass, OLD_DE) != []
+    assert await _stats(hass, OLD_DE_COST) != []
+    assert ent_reg.async_get(OLD_DE_COST) is not None
     assert ent_reg.async_get(OLD_SWITCH) is None
     assert hass.states.get(OLD_SWITCH) is None
+    assert not ir.async_get(hass).async_get_issue(DOMAIN, f"legacy_statistics_{entry.entry_id}")
+
+    # after a restart the issue does not come back (only kept old statistics)
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done(wait_background_tasks=True)
     assert not ir.async_get(hass).async_get_issue(DOMAIN, f"legacy_statistics_{entry.entry_id}")
 
     # running it again finds nothing new to copy (no duplicates)
@@ -171,8 +192,13 @@ async def test_merge_like_user_installation(
         result["flow_id"], {CONF_DELETE_OLD_STATISTICS: True}
     )
     await async_wait_recording_done(hass)
+    # only now (opt-in) old statistics and old cost sensor are deleted,
+    # the transferred costs stay
     assert await _stats(hass, OLD_DE) == []
+    assert await _stats(hass, OLD_DE_COST) == []
+    assert ent_reg.async_get(OLD_DE_COST) is None
     assert len(await _stats(hass, new_total)) == 8
+    assert (await _stats(hass, new_cost))[-1] == (0.3, 0.9)
 
 
 def test_replace_energy() -> None:
@@ -192,3 +218,68 @@ def test_replace_energy() -> None:
         "sensor.new", "sensor.other",
     ]
     assert update["device_consumption_water"] == [{"stat_consumption": "sensor.soft"}]
+
+
+OLD_EN_COST = OLD_EN + "_cost"
+
+
+async def test_first_setup_transfers_old_values_first(
+    hass: HomeAssistant, mock_api, freezer: FrozenDateTimeFactory
+) -> None:
+    """MQTT entities already deleted, only statistics left (EN and DE names)."""
+    from homeassistant import config_entries
+
+    freezer.move_to(T0 + timedelta(days=2))
+    _import(hass, OLD_EN, "m³", "volume", [0, 1, 2], [100.0, 100.1, 100.2], [0.1, 0.2, 0.3])
+    _import(hass, OLD_DE, "m³", "volume", [3, 4, 5], [100.4, 100.5, 100.6], [0.1, 0.2, 0.3])
+    _import(hass, OLD_SOFT, "m³", "volume", [3, 4], [80.0, 80.1], [0.0, 0.1])
+    _import(hass, OLD_EN_COST, "EUR", None, [0, 1, 2], [0.1, 0.2, 0.3], [0.1, 0.2, 0.3], 0)
+    _import(hass, OLD_DE_COST, "EUR", None, [3, 4, 5], [0.2, 0.4, 0.6], [0.2, 0.4, 0.6], 3)
+    ent_reg = er.async_get(hass)
+    ent_reg.async_get_or_create(
+        "switch", "mqtt", "iSoftSafePlus-Home_Water_lock",
+        suggested_object_id="isoftsafeplus_home_water_lock",
+    )
+    await async_wait_recording_done(hass)
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_USERNAME: "user", CONF_PASSWORD: "pw"}
+    )
+    assert result["step_id"] == "legacy"
+    ph = result["description_placeholders"]
+    # newest old statistic takes over its entity_id
+    assert f"`{OLD_DE}`" in ph["table"] and f"`{OLD_SOFT}`" in ph["table"]
+    assert f"`{OLD_EN}`" not in ph["table"]
+    # older English series is merged into it, costs as well (with amount)
+    assert f"| `{OLD_EN}` | `{OLD_DE}` |" in ph["statistics"]
+    assert f"| `{OLD_EN_COST}` | `{OLD_DE_COST}` |" in ph["costs"]
+    assert "0.30 EUR" in ph["costs"]
+
+    from custom_components.judo_isoft_save_plus.const import CONF_MIGRATE_HISTORY
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_MIGRATE_HISTORY: True}
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done(wait_background_tasks=True)
+    await async_wait_recording_done(hass)
+
+    assert ent_reg.async_get(OLD_DE).platform == DOMAIN
+    assert ent_reg.async_get(OLD_SOFT).platform == DOMAIN
+    assert ent_reg.async_get("switch.isoftsafeplus_home_water_lock") is None
+    # one continuous series under the taken over entity_id, old values first
+    assert (await _stats(hass, OLD_DE))[:6] == [
+        (100.0, 0.1), (100.1, 0.2), (100.2, 0.3),
+        (100.4, 0.5), (100.5, 0.6), (100.6, 0.7),
+    ]
+    # costs: 0.30 EUR (EN) + 0.60 EUR (DE)
+    assert await _stats(hass, OLD_DE_COST) == [
+        (0.1, 0.1), (0.2, 0.2), (0.3, 0.3), (0.2, 0.5), (0.4, 0.7), (0.6, 0.9),
+    ]
+    # old statistics are kept, nothing left to repair
+    assert await _stats(hass, OLD_EN_COST) != []
+    entry = hass.config_entries.async_entries(DOMAIN)[0]
+    assert not ir.async_get(hass).async_get_issue(DOMAIN, f"legacy_statistics_{entry.entry_id}")

@@ -200,7 +200,7 @@ async def test_pick_group(
     result = await _start_flow(hass)
     assert result["step_id"] == "legacy_pick"
     result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {CONF_LEGACY_GROUP: CLIENT_ID}
+        result["flow_id"], {CONF_LEGACY_GROUP: "judo_isoftsaveplus_keller"}
     )
     assert result["step_id"] == "legacy"
     assert result["description_placeholders"]["client_id"] == CLIENT_ID

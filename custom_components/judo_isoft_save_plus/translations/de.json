@@ -24,8 +24,8 @@
         }
       },
       "legacy": {
-        "title": "Verlauf aus AppDaemon übernehmen",
-        "description": "Es wurden Entitäten der alten AppDaemon/MQTT-Bridge **{client_id}** gefunden. Die folgenden {count} Entitäten können von dieser Integration übernommen werden. Sie behalten ihre Entitäts-ID, dadurch laufen Verlauf, Langzeitstatistik (✔), Dashboards und Automationen weiter:\n\n| Alte Entität (MQTT) | Neue Entität | Letzter Wert | Statistik |\n|---|---|---|---|\n{table}\n\nNicht übertragbar (werden entfernt, der Verlauf bleibt in der Datenbank): {skipped}\n\n**Vor dem Fortfahren die AppDaemon-App bzw. den getjudo-Dienst stoppen.** Die alten MQTT-Entitäten und ihr Gerät werden entfernt.",
+        "title": "Alte AppDaemon-Werte zuerst übertragen",
+        "description": "Es wurden Daten der alten AppDaemon/MQTT-Bridge **{client_id}** gefunden. Sie werden übertragen, **bevor** die Integration eigene Werte schreibt.\n\n**1. Übernahme ({count})**: die neuen Entitäten bekommen diese Entitäts-IDs, dadurch laufen Verlauf, Langzeitstatistik, Kosten im Energie-Dashboard, Dashboards und Automationen weiter:\n\n| Alte Entität | Neue Entität | Letzter Wert | Statistik |\n|---|---|---|---|\n{table}\n\n**2. Weitere alte Statistiken** (z. B. ältere englische Namen), werden in die Entitäten oben eingefügt:\n\n| Alte Statistik | Nach | Zeitraum | Stunden |\n|---|---|---|---|\n{statistics}\n\n**3. Kosten (Energie-Dashboard)**, werden übertragen:\n\n| Alte Kosten-Statistik | Nach | Zeitraum | Stunden | Betrag |\n|---|---|---|---|---|\n{costs}\n\nNicht übertragbar (werden entfernt, der Verlauf bleibt in der Datenbank): {skipped}\n\n**Vor dem Fortfahren die AppDaemon-App bzw. den getjudo-Dienst stoppen.** Alte Statistiken bleiben erhalten. Vorher ein Backup erstellen.",
         "data": {
           "migrate_history": "Verlauf und Statistik übernehmen"
         }
@@ -72,9 +72,9 @@
       },
       "statistics": {
         "title": "Statistik aus AppDaemon übernehmen",
-        "description": "Es wurden Langzeitstatistiken (inkl. **Kosten** des Energie-Dashboards) der alten AppDaemon/MQTT-Bridge unter anderen Entitäts-IDs gefunden. Sie werden in die Entitäten dieser Integration kopiert (nur Stunden vor deren eigenen Daten), die Summen werden fortgeführt, so dass das Energie-Dashboard eine durchgehende Reihe zeigt:\n\n| Alte Statistik | Neue Statistik | Zeitraum | Kopierte Stunden |\n|---|---|---|---|\n{table}\n\nEnergie-Dashboard wird auf die neuen Entitäten umgestellt:\n{energy}\n\nÜbrig gebliebene Entitäten werden entfernt (Verlauf bleibt in der Datenbank): {remove}\n\nVorher ein Backup erstellen. Die alten Statistiken bleiben erhalten, außer du wählst das Löschen.",
+        "description": "Es wurden Langzeitstatistiken der alten AppDaemon/MQTT-Bridge unter anderen Entitäts-IDs gefunden. Sie werden in die Entitäten dieser Integration kopiert (nur Stunden vor deren eigenen Daten) und die Summen werden fortgeführt, so dass das Energie-Dashboard eine durchgehende Reihe zeigt.\n\n**Wasser**\n\n| Alte Statistik | Neue Statistik | Zeitraum | Kopierte Stunden |\n|---|---|---|---|\n{table}\n\n**Kosten (Energie-Dashboard)**: werden in die Kosten-Statistik der neuen Entitäten übertragen\n\n| Alte Kosten-Statistik | Neue Kosten-Statistik | Zeitraum | Kopierte Stunden | Betrag |\n|---|---|---|---|---|\n{costs}\n\nEnergie-Dashboard wird auf die neuen Entitäten umgestellt:\n{energy}\n\nÜbrig gebliebene Entitäten der Bridge, die entfernt werden (Verlauf bleibt in der Datenbank): {remove}\n\nDie alten Kosten-Sensoren {cost_entities} und alle alten Statistiken werden nur entfernt, wenn du die Option unten ankreuzt. Vorher ein Backup erstellen.",
         "data": {
-          "delete_old_statistics": "Alte Statistiken danach löschen"
+          "delete_old_statistics": "Alte Statistiken und alte Kosten-Sensoren danach löschen (die Daten wurden kopiert)"
         }
       }
     },
@@ -184,9 +184,9 @@
         "step": {
           "confirm": {
             "title": "Statistik aus AppDaemon übernehmen",
-            "description": "Es wurden Langzeitstatistiken (inkl. **Kosten** des Energie-Dashboards) der alten AppDaemon/MQTT-Bridge unter anderen Entitäts-IDs gefunden. Sie werden in die Entitäten dieser Integration kopiert (nur Stunden vor deren eigenen Daten), die Summen werden fortgeführt, so dass das Energie-Dashboard eine durchgehende Reihe zeigt:\n\n| Alte Statistik | Neue Statistik | Zeitraum | Kopierte Stunden |\n|---|---|---|---|\n{table}\n\nEnergie-Dashboard wird auf die neuen Entitäten umgestellt:\n{energy}\n\nÜbrig gebliebene Entitäten werden entfernt (Verlauf bleibt in der Datenbank): {remove}\n\nVorher ein Backup erstellen. Die alten Statistiken bleiben erhalten, außer du wählst das Löschen.",
+            "description": "Es wurden Langzeitstatistiken der alten AppDaemon/MQTT-Bridge unter anderen Entitäts-IDs gefunden. Sie werden in die Entitäten dieser Integration kopiert (nur Stunden vor deren eigenen Daten) und die Summen werden fortgeführt, so dass das Energie-Dashboard eine durchgehende Reihe zeigt.\n\n**Wasser**\n\n| Alte Statistik | Neue Statistik | Zeitraum | Kopierte Stunden |\n|---|---|---|---|\n{table}\n\n**Kosten (Energie-Dashboard)**: werden in die Kosten-Statistik der neuen Entitäten übertragen\n\n| Alte Kosten-Statistik | Neue Kosten-Statistik | Zeitraum | Kopierte Stunden | Betrag |\n|---|---|---|---|---|\n{costs}\n\nEnergie-Dashboard wird auf die neuen Entitäten umgestellt:\n{energy}\n\nÜbrig gebliebene Entitäten der Bridge, die entfernt werden (Verlauf bleibt in der Datenbank): {remove}\n\nDie alten Kosten-Sensoren {cost_entities} und alle alten Statistiken werden nur entfernt, wenn du die Option unten ankreuzt. Vorher ein Backup erstellen.",
             "data": {
-              "delete_old_statistics": "Alte Statistiken danach löschen"
+              "delete_old_statistics": "Alte Statistiken und alte Kosten-Sensoren danach löschen (die Daten wurden kopiert)"
             }
           }
         },

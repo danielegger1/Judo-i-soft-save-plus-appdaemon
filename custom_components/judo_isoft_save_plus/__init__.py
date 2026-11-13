@@ -12,6 +12,7 @@ from .api import JudoApi
 from .const import CONF_LEGACY_MIGRATION, DOMAIN
 from .coordinator import JudoCoordinator
 from .legacy import async_migrate, read_seed
+from .statistics_merge import async_build_plan, async_execute
 from .transfer import async_check_issue
 
 PLATFORMS: list[Platform] = [
@@ -53,6 +54,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: JudoConfigEntry) -> bool
             legacy.get("remove", []),
             legacy.get("device_id"),
         )
+        # Old values first: merge the remaining statistics of the bridge
+        # (other names, costs) into the taken over entities before this
+        # integration writes its own values.
+        if legacy.get("merge_statistics"):
+            plan = await async_build_plan(hass, serial)
+            if plan.pending:
+                await async_execute(hass, plan, delete_old=False)
         # only once
         data = {k: v for k, v in entry.data.items() if k != CONF_LEGACY_MIGRATION}
         hass.config_entries.async_update_entry(entry, data=data)

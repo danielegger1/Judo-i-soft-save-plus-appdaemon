@@ -45,7 +45,7 @@
   },
   "options": {
     "step": {
-      "init": {
+      "settings": {
         "title": "Optionen",
         "data": {
           "scan_interval": "Abfrageintervall",
@@ -62,7 +62,24 @@
           "sodium_check": "Die Enthärtung erhöht den Natriumgehalt um ca. 8,2 mg/L pro °dH. Wenn aktiv, wird eine zu niedrige Wunschwasserhärte so angehoben, dass der Grenzwert eingehalten wird.",
           "sodium_limit": "Trinkwasserverordnung: 200 mg/L"
         }
+      },
+      "init": {
+        "title": "Optionen",
+        "menu_options": {
+          "settings": "Einstellungen",
+          "statistics": "Statistik aus AppDaemon übernehmen"
+        }
+      },
+      "statistics": {
+        "title": "Statistik aus AppDaemon übernehmen",
+        "description": "Es wurden Langzeitstatistiken (inkl. **Kosten** des Energie-Dashboards) der alten AppDaemon/MQTT-Bridge unter anderen Entitäts-IDs gefunden. Sie werden in die Entitäten dieser Integration kopiert (nur Stunden vor deren eigenen Daten), die Summen werden fortgeführt, so dass das Energie-Dashboard eine durchgehende Reihe zeigt:\n\n| Alte Statistik | Neue Statistik | Zeitraum | Kopierte Stunden |\n|---|---|---|---|\n{table}\n\nEnergie-Dashboard wird auf die neuen Entitäten umgestellt:\n{energy}\n\nÜbrig gebliebene Entitäten werden entfernt (Verlauf bleibt in der Datenbank): {remove}\n\nVorher ein Backup erstellen. Die alten Statistiken bleiben erhalten, außer du wählst das Löschen.",
+        "data": {
+          "delete_old_statistics": "Alte Statistiken danach löschen"
+        }
       }
+    },
+    "abort": {
+      "nothing_to_transfer": "Keine Daten der alten AppDaemon/MQTT-Bridge gefunden."
     }
   },
   "entity": {
@@ -158,6 +175,26 @@
       "water_lock": {
         "name": "Wasser absperren"
       }
+    }
+  },
+  "issues": {
+    "legacy_statistics": {
+      "title": "Statistiken der alten AppDaemon/MQTT-Bridge gefunden",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Statistik aus AppDaemon übernehmen",
+            "description": "Es wurden Langzeitstatistiken (inkl. **Kosten** des Energie-Dashboards) der alten AppDaemon/MQTT-Bridge unter anderen Entitäts-IDs gefunden. Sie werden in die Entitäten dieser Integration kopiert (nur Stunden vor deren eigenen Daten), die Summen werden fortgeführt, so dass das Energie-Dashboard eine durchgehende Reihe zeigt:\n\n| Alte Statistik | Neue Statistik | Zeitraum | Kopierte Stunden |\n|---|---|---|---|\n{table}\n\nEnergie-Dashboard wird auf die neuen Entitäten umgestellt:\n{energy}\n\nÜbrig gebliebene Entitäten werden entfernt (Verlauf bleibt in der Datenbank): {remove}\n\nVorher ein Backup erstellen. Die alten Statistiken bleiben erhalten, außer du wählst das Löschen.",
+            "data": {
+              "delete_old_statistics": "Alte Statistiken danach löschen"
+            }
+          }
+        },
+        "abort": {
+          "nothing_to_transfer": "Keine Daten der alten AppDaemon/MQTT-Bridge gefunden."
+        }
+      },
+      "description": "Es sind Langzeitstatistiken und/oder Entitäten der alten AppDaemon/MQTT-Bridge übrig. Über „Beheben“ werden sie (nach einer Vorschau) in die Entitäten von JUDO i-soft SAFE+ übernommen."
     }
   }
 }

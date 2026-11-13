@@ -12,6 +12,7 @@ from .api import JudoApi
 from .const import CONF_LEGACY_MIGRATION, DOMAIN
 from .coordinator import JudoCoordinator
 from .legacy import async_migrate, read_seed
+from .transfer import async_check_issue
 
 PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
@@ -64,6 +65,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: JudoConfigEntry) -> bool
 
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # left over statistics/entities of the old bridge -> repair issue
+    entry.async_create_background_task(
+        hass, async_check_issue(hass, entry), f"{DOMAIN} legacy statistics check"
+    )
     entry.async_on_unload(entry.add_update_listener(_async_reload))
     return True
 

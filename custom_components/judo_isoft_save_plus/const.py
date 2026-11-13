@@ -81,3 +81,4 @@ def scan_interval(seconds: int) -> timedelta:
 CONF_LEGACY_MIGRATION: Final = "legacy_migration"
 CONF_MIGRATE_HISTORY: Final = "migrate_history"
 CONF_LEGACY_GROUP: Final = "legacy_group"
+CONF_DELETE_OLD_STATISTICS: Final = "delete_old_statistics"

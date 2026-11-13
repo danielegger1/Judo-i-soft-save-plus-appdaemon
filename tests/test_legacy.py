@@ -213,3 +213,34 @@ async def test_pick_group(
     assert ent_reg.async_get(_old_id("Gesamtwasserverbrauch")).platform == DOMAIN
     # the other bridge is untouched
     assert ent_reg.async_get("sensor.judo_garage_gesamtwasserverbrauch").platform == "mqtt"
+
+
+async def test_duplicate_names_are_removed(
+    hass: HomeAssistant, mock_api, freezer: FrozenDateTimeFactory
+) -> None:
+    """The bridge ran with ENG names first, then DE: both must be handled."""
+    freezer.move_to("2026-11-09 10:00:00+00:00")
+    _add_legacy(hass)
+    ent_reg = er.async_get(hass)
+    old_en = ent_reg.async_get_or_create(
+        "switch", "mqtt", f"{CLIENT_ID}_Water_lock",
+        suggested_object_id="isoftsafeplus_home_water_lock",
+    )
+    hass.states.async_set(old_en.entity_id, "unavailable", {"restored": True})
+
+    group = find_legacy_groups(hass)[0]
+    dup = next(e for e in group.entities if e.legacy_name == "Water_lock")
+    assert dup.duplicate and not dup.transferable
+    # the DE entity (still has a value) takes over
+    assert group.migration()["water_lock"] == _old_id("Wasser_absperren")
+
+    freezer.tick(timedelta(minutes=5))
+    result = await _start_flow(hass)
+    assert old_en.entity_id in result["description_placeholders"]["skipped"]
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_MIGRATE_HISTORY: True}
+    )
+    await hass.async_block_till_done()
+    assert ent_reg.async_get(old_en.entity_id) is None
+    assert hass.states.get(old_en.entity_id) is None
+    assert ent_reg.async_get(_old_id("Wasser_absperren")).platform == DOMAIN

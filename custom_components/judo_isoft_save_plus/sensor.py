@@ -15,6 +15,7 @@ from homeassistant.const import (
     EntityCategory,
     UnitOfTime,
     UnitOfVolume,
+    UnitOfVolumeFlowRate,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -23,7 +24,6 @@ from . import JudoConfigEntry
 from .entity import JudoEntity
 
 HARDNESS = "°dH"
-FLOW = "L/h"
 
 SENSORS: tuple[SensorEntityDescription, ...] = (
     SensorEntityDescription(
@@ -66,7 +66,8 @@ SENSORS: tuple[SensorEntityDescription, ...] = (
     SensorEntityDescription(
         key="water_flow",
         translation_key="water_flow",
-        native_unit_of_measurement=FLOW,
+        native_unit_of_measurement=UnitOfVolumeFlowRate.LITERS_PER_HOUR,
+        device_class=SensorDeviceClass.VOLUME_FLOW_RATE,
         state_class=SensorStateClass.MEASUREMENT,
     ),
     SensorEntityDescription(

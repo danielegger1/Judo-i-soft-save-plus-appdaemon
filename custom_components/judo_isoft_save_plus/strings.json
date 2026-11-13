@@ -45,7 +45,7 @@
   },
   "options": {
     "step": {
-      "init": {
+      "settings": {
         "title": "Options",
         "data": {
           "scan_interval": "Polling interval",
@@ -62,7 +62,24 @@
           "sodium_check": "Softening adds about 8.2 mg/L sodium per °dH. If enabled, a lower output hardness is raised so the limit is kept.",
           "sodium_limit": "German drinking water regulation: 200 mg/L"
         }
+      },
+      "init": {
+        "title": "Options",
+        "menu_options": {
+          "settings": "Settings",
+          "statistics": "Take over statistics from AppDaemon"
+        }
+      },
+      "statistics": {
+        "title": "Take over statistics from AppDaemon",
+        "description": "Long-term statistics (incl. **costs** of the energy dashboard) of the old AppDaemon/MQTT bridge were found under other entity IDs. They are copied into the entities of this integration (only hours before their own data), sums are continued, so the energy dashboard shows one continuous series:\n\n| Old statistic | New statistic | Period | Hours copied |\n|---|---|---|---|\n{table}\n\nEnergy dashboard is switched to the new entities:\n{energy}\n\nLeft over entities removed (history stays in the database): {remove}\n\nCreate a backup first. The old statistics are kept unless you choose to delete them.",
+        "data": {
+          "delete_old_statistics": "Delete the old statistics afterwards"
+        }
       }
+    },
+    "abort": {
+      "nothing_to_transfer": "No data of the old AppDaemon/MQTT bridge found."
     }
   },
   "entity": {
@@ -158,6 +175,26 @@
       "water_lock": {
         "name": "Water lock"
       }
+    }
+  },
+  "issues": {
+    "legacy_statistics": {
+      "title": "Statistics of the old AppDaemon/MQTT bridge found",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Take over statistics from AppDaemon",
+            "description": "Long-term statistics (incl. **costs** of the energy dashboard) of the old AppDaemon/MQTT bridge were found under other entity IDs. They are copied into the entities of this integration (only hours before their own data), sums are continued, so the energy dashboard shows one continuous series:\n\n| Old statistic | New statistic | Period | Hours copied |\n|---|---|---|---|\n{table}\n\nEnergy dashboard is switched to the new entities:\n{energy}\n\nLeft over entities removed (history stays in the database): {remove}\n\nCreate a backup first. The old statistics are kept unless you choose to delete them.",
+            "data": {
+              "delete_old_statistics": "Delete the old statistics afterwards"
+            }
+          }
+        },
+        "abort": {
+          "nothing_to_transfer": "No data of the old AppDaemon/MQTT bridge found."
+        }
+      },
+      "description": "Long-term statistics and/or entities of the old AppDaemon/MQTT bridge are left over. Fix this issue to merge them into the JUDO i-soft SAFE+ entities (with a preview first)."
     }
   }
 }

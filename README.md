@@ -96,6 +96,29 @@ If the old bridge is still sending values, the setup refuses the takeover until 
 stopped. With several old bridges you choose the one belonging to the device; the
 takeover is only offered for accounts with one device.
 
+### Taking over statistics later (incl. energy dashboard costs)
+
+If the integration was already set up before, or the old bridge ran with English
+and German names at different times, the history is spread over several statistic IDs
+(e.g. `sensor.<old>_total_water_consumption`, `sensor.<old>_gesamtwasserverbrauch`
+and their `_cost` statistics of the energy dashboard).
+
+The integration detects this on start and shows a **repair** (*Settings → System →
+Repairs*). It can also be started via *Configure → Take over statistics from AppDaemon*.
+A preview lists every old statistic, the target, the period and the hours copied. On
+confirmation:
+
+- the hourly long-term statistics (water and **costs**) are copied into the entities of
+  this integration (only hours before their own data) and the sums are continued, so
+  the energy dashboard shows one continuous series,
+- the energy dashboard is switched to the new entities,
+- left over entities of the old bridge (e.g. an old `..._water_lock` switch or
+  unavailable `..._cost` sensors) are removed,
+- optionally the old statistics are deleted afterwards (off by default).
+
+Create a backup before. Only long-term statistics are merged; the detailed state history
+of the old entity IDs stays under their old IDs.
+
 ### Attention
 **Don't post or publish your myjudo.eu credentials or token anywhere. They allow full access to the plant!**
 The integration does not log the token, and diagnostics downloads redact the credentials.

@@ -33,6 +33,7 @@ from homeassistant.helpers.selector import (
 
 from .api import JudoApi, JudoAuthError, JudoConnectionError, JudoError
 from .const import (
+    CONF_DELETE_OLD_STATISTICS,
     CONF_LEGACY_GROUP,
     CONF_LEGACY_MIGRATION,
     CONF_LIMIT_EXTRACTION_QUANTITY,
@@ -60,6 +61,8 @@ from .const import (
     MIN_SCAN_INTERVAL,
 )
 from .legacy import LegacyGroup, bridge_still_running, find_legacy_groups
+from .statistics_merge import LegacyPlan, describe as describe_plan
+from .transfer import async_plan as async_transfer_plan, async_run as async_run_transfer
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -306,9 +309,40 @@ def _number(minimum: float, maximum: float, step: float, unit: str) -> NumberSel
 
 
 class JudoOptionsFlow(OptionsFlow):
-    """Options: polling interval, notifications, sodium check, slider limits."""
+    """Options: settings and statistics transfer of the old bridge."""
+
+    _plan: LegacyPlan | None = None
 
     async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        return self.async_show_menu(step_id="init", menu_options=["settings", "statistics"])
+
+    async def async_step_statistics(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Preview and run the statistics transfer of the old bridge."""
+        if user_input is not None and self._plan is not None:
+            await async_run_transfer(
+                self.hass,
+                self.config_entry,
+                self._plan,
+                user_input[CONF_DELETE_OLD_STATISTICS],
+            )
+            # keep the options unchanged (no reload)
+            return self.async_create_entry(data=dict(self.config_entry.options))
+        self._plan = await async_transfer_plan(self.hass, self.config_entry)
+        if self._plan.empty:
+            return self.async_abort(reason="nothing_to_transfer")
+        return self.async_show_form(
+            step_id="statistics",
+            data_schema=vol.Schema(
+                {vol.Required(CONF_DELETE_OLD_STATISTICS, default=False): bool}
+            ),
+            description_placeholders=describe_plan(self._plan),
+        )
+
+    async def async_step_settings(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         if user_input is not None:
@@ -360,4 +394,4 @@ class JudoOptionsFlow(OptionsFlow):
                 ): _number(100, DEVICE_MAX_EXTRACTION_QUANTITY, 100, "L"),
             }
         )
-        return self.async_show_form(step_id="init", data_schema=schema)
+        return self.async_show_form(step_id="settings", data_schema=schema)

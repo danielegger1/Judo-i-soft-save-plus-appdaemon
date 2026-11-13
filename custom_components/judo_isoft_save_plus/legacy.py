@@ -49,6 +49,9 @@ LEGACY_NAMES: dict[str, str | None] = {
     "Gesamtwasserverbrauch": "total_water",
     "Gesamtweichwasseranteil": "total_softwater",
     "Gesamthartwasseranteil": "total_hardwater",
+    # names of modified bridge versions
+    "Gesamtweichwasserverbrauch": "total_softwater",
+    "Gesamthartwasserverbrauch": "total_hardwater",
     "Salzvorrat": "salt_stock",
     "Salzreichweite": "salt_range",
     "Wunschwasserhaerte": "output_hardness",
@@ -130,10 +133,18 @@ class LegacyEntity:
     entity_id: str
     legacy_name: str
     key: str | None  # new key, None = not transferable
+    # The bridge ran with DE and ENG names at different times, so the same
+    # value can exist twice (e.g. "Water_lock" and "Wasser_absperren").
+    # Only one of them can hand over its entity_id, the other is removed.
+    duplicate: bool = False
 
     @property
     def transferable(self) -> bool:
-        return self.key is not None and self.entity_id.split(".", 1)[0] == NEW_DOMAINS[self.key]
+        return (
+            self.key is not None
+            and not self.duplicate
+            and self.entity_id.split(".", 1)[0] == NEW_DOMAINS[self.key]
+        )
 
 
 @dataclass
@@ -184,20 +195,31 @@ def find_legacy_groups(hass: HomeAssistant) -> list[LegacyGroup]:
 
     result = []
     for group in groups.values():
-        # keep only one entity per new key (first found)
+        # one entity per new key: the most recently updated one (the name
+        # set the bridge used last) takes over, the others are removed
         seen: set[str] = set()
-        unique: list[LegacyEntity] = []
-        for ent in sorted(group.entities, key=lambda e: e.entity_id):
-            if ent.key is not None and ent.key in seen:
+        for ent in sorted(
+            group.entities, key=lambda e: _recency(hass, e.entity_id), reverse=True
+        ):
+            if ent.key is None:
                 continue
-            if ent.key is not None:
+            if ent.key in seen:
+                ent.duplicate = True
+            else:
                 seen.add(ent.key)
-            unique.append(ent)
-        group.entities = unique
-        names = {e.key for e in unique}
-        if len(group.transferable) >= MIN_MATCHES and "total_water" in names:
+        group.entities.sort(key=lambda e: e.entity_id)
+        if len(group.transferable) >= MIN_MATCHES and "total_water" in seen:
             result.append(group)
     return sorted(result, key=lambda g: g.client_id)
+
+
+def _recency(hass: HomeAssistant, entity_id: str) -> tuple[int, float]:
+    """Sort key: available states first, then the newest one."""
+    state = hass.states.get(entity_id)
+    if state is None:
+        return (0, 0.0)
+    available = state.state not in (STATE_UNAVAILABLE, STATE_UNKNOWN)
+    return (int(available), state.last_reported.timestamp())
 
 
 def bridge_still_running(hass: HomeAssistant, group: LegacyGroup) -> bool:
